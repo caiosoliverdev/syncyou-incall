@@ -51,6 +51,7 @@ describe('AuthService', () => {
               }
               if (key === 'oauth') {
                 return {
+                  webAppOrigin: 'http://localhost:3000',
                   frontendRedirectUrl: 'http://localhost:3000/oauth/callback',
                   frontendRedirectAllowlist: ['http://localhost:3000/oauth/callback'],
                   google: {

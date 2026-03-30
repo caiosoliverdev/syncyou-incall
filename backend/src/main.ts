@@ -18,6 +18,40 @@ async function bootstrap() {
 
   app.use(cookieParser());
 
+  const publicUrls = resolvePublicUrls();
+
+  /**
+   * Se OAUTH_FRONTEND_REDIRECT_URL (ou fallback) estiver errado, o redirect de sucesso pode cair em
+   * `/api/v1/auth/google/callback?oauth=ok&access_token=...` — o Passport espera `code` do Google nesse path.
+   * Reencaminha para a página da UI que consome tokens (`/oauth/callback`) com a mesma query.
+   */
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      next();
+      return;
+    }
+    const p = (req.path || '').replace(/\/+$/, '');
+    if (!/\/auth\/(google|microsoft)\/callback$/.test(p)) {
+      next();
+      return;
+    }
+    const q = req.query as Record<string, unknown>;
+    if (typeof q.code === 'string' && q.code.length > 0) {
+      next();
+      return;
+    }
+    const oauth = typeof q.oauth === 'string' ? q.oauth : '';
+    if (!oauth) {
+      next();
+      return;
+    }
+    const full = (req.originalUrl || req.url || '').split('#')[0];
+    const qIdx = full.indexOf('?');
+    const search = qIdx >= 0 ? full.slice(qIdx) : '';
+    const base = publicUrls.webAppOrigin.replace(/\/$/, '');
+    res.redirect(302, `${base}/oauth/callback${search}`);
+  });
+
   /** Next `output: "export"` (ex. /oauth/callback) quando API e UI partilham o mesmo host sem nginx a servir `out/`. */
   const frontendStaticRoot = (() => {
     const raw = process.env.FRONTEND_STATIC_DIR?.trim();
@@ -80,7 +114,6 @@ async function bootstrap() {
     }),
   );
 
-  const publicUrls = resolvePublicUrls();
   /** Com `CORS_ORIGIN` definido: lista explícita + credentials. Sem definir ou `*`: permissivo (Bearer no header). */
   const cors =
     publicUrls.corsOrigins?.length ?

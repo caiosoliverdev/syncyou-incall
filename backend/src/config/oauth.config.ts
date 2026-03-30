@@ -2,6 +2,8 @@ import { registerAs } from '@nestjs/config';
 import { resolvePublicUrls } from './resolve-public-urls';
 
 export type OauthConfigSlice = {
+  /** Origem da UI (sem path) — fallback se OAUTH_FRONTEND_REDIRECT_URL apontar por engano para o callback do IdP. */
+  webAppOrigin: string;
   frontendRedirectUrl: string;
   frontendRedirectAllowlist: string[];
   google: {
@@ -21,6 +23,7 @@ export type OauthConfigSlice = {
 export default registerAs('oauth', (): OauthConfigSlice => {
   const u = resolvePublicUrls();
   return {
+    webAppOrigin: u.webAppOrigin,
     frontendRedirectUrl: u.oauthFrontendRedirectUrl,
     frontendRedirectAllowlist: u.oauthFrontendRedirectAllowlist,
     google: {

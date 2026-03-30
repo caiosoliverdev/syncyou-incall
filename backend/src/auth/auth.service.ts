@@ -1030,11 +1030,36 @@ export class AuthService {
     return { message: 'Senha redefinida com sucesso.' };
   }
 
+  /**
+   * Nunca usar o path de callback do IdP (google ou microsoft) como destino da UI: o Google usa esse
+   * URL com `code`; a UI recebe `oauth=ok` e tokens noutro path (ex.: /oauth/callback).
+   */
+  private sanitizeFrontendConsumeBase(url: string): string {
+    const trimmed = url.replace(/\/$/, '');
+    try {
+      const u = new URL(trimmed);
+      if (/\/auth\/(google|microsoft)\/callback$/.test(u.pathname)) {
+        const fixed = `${this.oauthCfg.webAppOrigin.replace(/\/$/, '')}/oauth/callback`;
+        this.logger.warn(
+          `Redirect OAuth da UI apontava para o callback do IdP (${trimmed}); a usar ${fixed}. Corrige OAUTH_FRONTEND_REDIRECT_URL.`,
+        );
+        return fixed;
+      }
+    } catch {
+      return trimmed;
+    }
+    return trimmed;
+  }
+
   private oauthFrontendBase(redirectOverride?: string): string {
-    const def = this.oauthCfg.frontendRedirectUrl.replace(/\/$/, '');
+    const def = this.sanitizeFrontendConsumeBase(
+      this.oauthCfg.frontendRedirectUrl.replace(/\/$/, ''),
+    );
     if (!redirectOverride?.trim()) return def;
     const n = redirectOverride.trim().replace(/\/$/, '');
-    if (this.oauthCfg.frontendRedirectAllowlist.includes(n)) return n;
+    if (this.oauthCfg.frontendRedirectAllowlist.includes(n)) {
+      return this.sanitizeFrontendConsumeBase(n);
+    }
     return def;
   }
 
