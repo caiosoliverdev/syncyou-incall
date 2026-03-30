@@ -1,0 +1,12 @@
+---
+description: Remoção lógica (soft delete) — nunca apagar linhas de negócio em DELETE físico
+globs: backend/src/**/*.ts
+alwaysApply: false
+---
+
+# Soft delete (`deleted`)
+
+- **Nenhuma entidade de negócio** deve ser removida com `DELETE` SQL ou `repository.remove()`/`delete()` de forma que perca o registo.
+- Usar **`deleted: boolean`**, por padrão `false`, e opcionalmente **`deletedAt`** ao marcar como removido.
+- **Consultas** em repositórios e serviços devem filtrar **`where: { deleted: false }`** (ou equivalente) salvo casos explícitos de admin/auditoria.
+- Índices únicos (ex.: email) devem considerar se contas apagadas logicamente podem voltar a registar-se; em caso de dúvida, documentar a regra de produto.

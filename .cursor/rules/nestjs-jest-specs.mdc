@@ -1,0 +1,23 @@
+---
+description: Testes Jest obrigatórios no backend NestJS (ficheiro .spec.ts por unidade)
+globs: backend/src/**/*.ts
+alwaysApply: false
+---
+
+# Testes (`*.spec.ts`)
+
+- **Regra:** cada ficheiro de implementação em `backend/src` que introduza lógica testável deve ter **ficheiro de teste homólogo** no mesmo diretório: `nome.service.ts` → `nome.service.spec.ts`, `nome.controller.ts` → `nome.controller.spec.ts`, `nome.guard.ts` → `nome.guard.spec.ts`, etc.
+- **Não** duplicar testes só por existir `index.ts` de re-export; testar serviços, controladores, guards e utilitários com comportamento.
+- **Stack:** Jest (já configurado no `package.json` do backend). Nest: `Test.createTestingModule` para providers/controllers; mocks com `jest.fn()` / providers customizados quando há dependências externas (DB, HTTP, mailer).
+
+## O que cobrir
+
+- **Serviços:** métodos públicos, ramos de erro e efeitos (chamadas a dependências mockadas).
+- **Controladores:** status HTTP, corpo JSON e validação (preferir `supertest` em testes e2e para fluxo completo; em unitário, instanciar o controller com mocks).
+- **Guards / pipes / filters:** comportamento autorizado vs negado.
+
+## Boas práticas
+
+- Nomes de teste descritivos (`it('should return 401 when token is missing', ...)`).
+- Após criar ou alterar código de produção, **criar ou atualizar** o `.spec.ts` correspondente e garantir `npm test` a passar.
+- Evitar testes acoplados à ordem de execução; `beforeEach` para arranjar o módulo de testes.

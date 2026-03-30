@@ -1,0 +1,50 @@
+---
+description: Preserve direct call layout state-machine decisions
+alwaysApply: true
+---
+
+# Direct Call Layout Rules (Do Not Regress)
+
+- Do not rewrite call UI from scratch; adjust logic through resolvers and state transitions.
+- Keep single source of truth for layout decisions: derive mode, main stage, sidebar, and self view from state.
+
+## Canonical Priority
+
+1. Active screen share
+2. Remote camera
+3. Local camera only when explicitly promoted
+4. Avatar fallback
+
+## Required Resolver Contract
+
+- Keep and evolve pure functions for:
+  - `resolveLayoutMode(state)`
+  - `resolveMainStage(state)`
+  - `resolveSidebarItems(state)`
+  - `resolveSelfView(state)`
+- Avoid duplicating this logic in JSX branches.
+
+## Transition Guarantees
+
+- Enter presentation mode automatically when any participant starts sharing.
+- Exit presentation mode automatically when nobody is sharing.
+- In presentation mode, remove self view and show sidebar.
+- If both users share and both have cameras, sidebar must support 4 cards (local/remote camera + local/remote screen).
+- Camera off must not leave stale/frozen stage; fallback immediately via resolver.
+
+## Pin / Stage Interaction
+
+- If a stage card is pinned, simple click on another card must not replace main stage.
+- Unpin behavior must be explicit; never silently override a valid pin.
+- Clear orphaned pins when pinned target becomes invalid.
+
+## Stream Classification
+
+- Separate camera vs screen detection by track semantics (screen-capture track checks).
+- Do not couple screen-share activation to camera activation.
+- Prevent camera-off events from incorrectly turning local stage into local avatar bubble.
+
+## Header / UX Integration
+
+- Keep call status and call actions integrated in conversation header as implemented.
+- Avoid reintroducing duplicated in-overlay headers for direct calls.

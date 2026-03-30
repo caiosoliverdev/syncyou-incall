@@ -1,0 +1,23 @@
+---
+description: Documentação OpenAPI/Swagger obrigatória no backend NestJS (SyncYou)
+globs: backend/src/**/*.ts
+alwaysApply: false
+---
+
+# Swagger / OpenAPI (NestJS)
+
+- **Prefixo da API:** `api/v1` (global). **Swagger UI:** `/api/swagger` (não confundir com o prefixo das rotas).
+- **Autenticação:** JWT Bearer (RS256). Em rotas protegidas usar `@ApiBearerAuth('JWT')` no método ou no controller; o esquema `JWT` já está registado em `setup-swagger.ts`.
+
+## Obrigatório em cada endpoint
+
+1. **`@ApiTags('...')`** no controller (agrupamento lógico).
+2. **`@ApiOperation({ summary: '...' })`** em cada handler; usar `description` quando o fluxo não for óbvio.
+3. **Respostas:** `@ApiOkResponse` / `@ApiCreatedResponse` com `type` ou `schema`; para erros comuns usar `@ApiBadRequestResponse`, `@ApiUnauthorizedResponse`, `@ApiForbiddenResponse`, `@ApiNotFoundResponse` conforme aplicável.
+4. **Body / query / params:** DTOs com **`@ApiProperty`** / **`@ApiPropertyOptional`** (e validação `class-validator` alinhada). Parâmetros de rota: `@ApiParam`.
+
+## Padrões
+
+- Preferir DTOs dedicados a `object` anónimos nos decorators, para o schema aparecer no Swagger.
+- Evitar endpoints sem resposta documentada; se 204, usar `@ApiNoContentResponse`.
+- Manter summaries em português claro e consistente com o domínio da feature.

@@ -1,0 +1,58 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "SyncYou",
+  "version": "0.0.2",
+  "identifier": "app.syncyou.desktop",
+  "build": {
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["syncyou"]
+      }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3Q0Q5QUVCNDczMTA3M0IKUldRN0J6Rkg2NXJOMTNmd0Yzc0llYmcvZHcxZ2hhU1VKanBxNlk4RGRGVHBOMEc5SHVGc2ZudVUK",
+      "dangerousInsecureTransportProtocol": true,
+      "endpoints": [
+        "http://localhost:3001/api/v1/desktop-updates/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SyncYou",
+        "width": 380,
+        "height": 640,
+        "resizable": false,
+        "fullscreen": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

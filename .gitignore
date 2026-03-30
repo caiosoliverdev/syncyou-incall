@@ -1,0 +1,2 @@
+# Chave privada do updater Tauri (mantém syncyou.key na raiz localmente; não commitar)
+/syncyou.key

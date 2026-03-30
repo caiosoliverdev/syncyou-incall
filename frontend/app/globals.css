@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Scrollbars finos — alinhados ao tema (data-theme no <main> em page.tsx) */
+[data-theme="dark"] *,
+[data-theme="light"] * {
+  scrollbar-width: thin;
+}
+
+[data-theme="dark"] * {
+  scrollbar-color: rgb(82 82 91 / 0.55) transparent;
+}
+
+[data-theme="light"] * {
+  scrollbar-color: rgb(161 161 170 / 0.65) transparent;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb {
+  background: rgb(82 82 91 / 0.45);
+  border-radius: 100px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-thumb:hover {
+  background: rgb(113 113 122 / 0.65);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="dark"] *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+[data-theme="light"] *::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-theme="light"] *::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+[data-theme="light"] *::-webkit-scrollbar-thumb {
+  background: rgb(161 161 170 / 0.45);
+  border-radius: 100px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] *::-webkit-scrollbar-thumb:hover {
+  background: rgb(113 113 122 / 0.5);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+[data-theme="light"] *::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button {
+  cursor: pointer !important;
+}
+
+@keyframes splash-logo-in {
+  from {
+    opacity: 0;
+    transform: scale(0.82) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes splash-ring {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.35;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 0.65;
+  }
+}
+
+@keyframes splash-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes splash-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.splash-logo-animate {
+  animation: splash-logo-in 0.95s ease-out forwards;
+}
+
+.splash-ring-animate {
+  animation: splash-ring 2.2s ease-in-out infinite;
+}
+
+.splash-shimmer-animate {
+  animation: splash-shimmer 1.35s ease-in-out infinite;
+}
+
+.splash-tagline-animate {
+  animation: splash-fade-up 0.7s ease-out 0.35s forwards;
+  opacity: 0;
+}

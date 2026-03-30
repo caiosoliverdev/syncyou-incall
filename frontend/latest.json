@@ -1,0 +1,11 @@
+{
+  "version": "0.0.2",
+  "notes": "Release v0.0.2 (darwin-aarch64)",
+  "pub_date": "2026-03-30T15:49:46.316Z",
+  "platforms": {
+    "darwin-aarch64": {
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRN0J6Rkg2NXJOMXlVdmpMT3kxMzRzU1BUN3d6Q21xMXFCeGtWVjRZM0ZiRGwxUld5VnZXemRoM2w1emsrTW5IYldCcmcyTUluL3hTbWpHVHJsV0FQNTY1NXNmSWc5aXdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzc0ODg1Nzg2CWZpbGU6U3luY1lvdS5hcHAudGFyLmd6CnJ6ZWpzK0NqUGhCeW1nanpERWpEdXJtc3NORDRlOGZzVzg5ZDE3WURiTjA4ZklhUGVPN1BqSk9yVEUzbm9LZC9ZM2JUdDQ5R2JTTU43UXZxb3NjRkFnPT0K",
+      "url": "http://localhost:3001/api/v1/desktop-updates/files/0.0.2/darwin-aarch64/SyncYou.app.tar.gz"
+    }
+  }
+}

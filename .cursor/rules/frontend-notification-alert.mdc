@@ -1,0 +1,13 @@
+---
+description: Feedback ao utilizador no frontend — usar sempre NotificationAlert
+globs: frontend/**/*.tsx
+alwaysApply: false
+---
+
+# NotificationAlert (SyncYou / Next)
+
+- **Erros, avisos, sucesso e informação** para o utilizador devem usar o componente **`NotificationAlert`** (`@/components/ui/notification-alert`), posicionado em **fixo** (`top-4 right-4`, `z-[100]`).
+- **Não** usar cartões ou `<p>` de erro **inline** por cima de campos de formulário, listas ou modais para mensagens globais de falha/sucesso — isso desloca o layout e compete com labels.
+- Tipos: `type="error"` | `"alerta"` | `"info"` | `"sucesso"`; passar `title` e opcionalmente `description`; `theme={isDark ? "dark" : "light"}` alinhado ao tema da página.
+- Para empilhar várias mensagens, preferir **`NotificationAlertStack`** com estado de lista (`items` + `onRemove`).
+- Exceções: validação **por campo** (texto curto sob o input) só quando for erro **específico daquele campo**; mensagens de API/ rede / permissão → **NotificationAlert**.

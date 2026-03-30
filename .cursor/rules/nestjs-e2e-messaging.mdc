@@ -1,0 +1,12 @@
+---
+description: Criptografia ponta-a-ponta (mensagens) — servidor não lê conteúdo
+globs: backend/src/**/*.ts
+alwaysApply: false
+---
+
+# E2E (conversação)
+
+- O **conteúdo das mensagens** não deve ser legível no servidor: armazenar apenas **cifras** ou metadados mínimos; chaves privadas ficam **no cliente** (Tauri / browser).
+- **Identidade / troca de chaves:** expor `encryptionPublicKey` (ou tabela dedicada) para utilizadores e dispositivos; acordar protocolo (ex.: X25519/Double Ratchet) antes de implementar.
+- **Transporte:** HTTPS obrigatório; JWT protege só a sessão API, não substitui E2E de mensagens.
+- Ao adicionar campos ou endpoints de mensagens, **não** persistir texto em claro; documentar no Swagger o que é cifrado e o formato (ex.: base64 de payload).

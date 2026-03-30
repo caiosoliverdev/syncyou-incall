@@ -1,0 +1,19 @@
+node_modules
+dist
+coverage
+*.log
+
+# Chaves JWT RSA geradas automaticamente em runtime
+data/jwt-keys/
+
+# Avatares e uploads locais
+data/uploads/
+
+# Updater desktop (latest.json + bundles; servidos em GET /api/v1/desktop-updates/)
+data/desktop-updates/*
+!data/desktop-updates/.gitkeep
+
+# Ambiente (não commitar segredos)
+.env
+.env.*
+!.env.example

@@ -1,0 +1,164 @@
+# Build Tauri em macOS (Apple Silicon + Intel), Windows e Linux no GitHub.
+#
+# Disparo:
+#   • Push de tag v* (ex.: v0.0.3) — cria/atualiza GitHub Release (draft) + artefactos no run
+#   • workflow_dispatch — mesmo build sem tag; upload ao teu API só se marcares upload_to_desktop_api
+#
+# Upload ao backend (desktop-updates):
+#   • Tag v*: corre automaticamente se existirem secret DESKTOP_UPDATES_PUBLISH_TOKEN e variable DESKTOP_UPDATES_API_BASE
+#   • workflow_dispatch: só se upload_to_desktop_api = true (e os mesmos secret/variable)
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   • TAURI_SIGNING_PRIVATE_KEY     — obrigatório para .sig do updater (texto da chave minisign)
+#   • TAURI_SIGNING_PRIVATE_KEY_PASSWORD — se a chave tiver senha
+#   • DESKTOP_UPDATES_PUBLISH_TOKEN — opcional: Bearer para POST .../desktop-updates/publish
+#
+# Variables (repositório, não secret — URL pública do API):
+#   • DESKTOP_UPDATES_API_BASE — ex.: https://api.seudominio.com (sem barra no fim)
+#     Só usado se DESKTOP_UPDATES_PUBLISH_TOKEN estiver definido.
+#
+# A chave pública em frontend/src-tauri/tauri.conf.json (plugins.updater.pubkey) deve corresponder
+# à TAURI_SIGNING_PRIVATE_KEY.
+
+name: Publish Tauri
+
+on:
+  workflow_dispatch:
+    inputs:
+      upload_to_desktop_api:
+        description: "Enviar cada plataforma ao backend (requer secret DESKTOP_UPDATES_PUBLISH_TOKEN + variable DESKTOP_UPDATES_API_BASE)"
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin"
+            bundle_target: aarch64-apple-darwin
+            updater_platform: darwin-aarch64
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin"
+            bundle_target: x86_64-apple-darwin
+            updater_platform: darwin-x86_64
+          - platform: ubuntu-22.04
+            args: ""
+            bundle_target: x86_64-unknown-linux-gnu
+            updater_platform: linux-x86_64
+          - platform: windows-latest
+            args: ""
+            bundle_target: x86_64-pc-windows-msvc
+            updater_platform: windows-x86_64
+
+    runs-on: ${{ matrix.platform }}
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências do sistema (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libssl-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Alvos Rust (macOS — build cruzado Intel em runner Apple Silicon)
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: frontend/src-tauri -> target
+          shared-key: tauri-${{ matrix.platform }}-${{ matrix.bundle_target }}
+
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+
+      - name: Tauri build + GitHub Release / artefactos
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: frontend
+          tagName: v__VERSION__
+          releaseName: "SyncYou v__VERSION__"
+          releaseBody: "Build gerado pelo GitHub Actions. O updater pode usar o teu `latest.json` no API ou os URLs do release."
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+          uploadWorkflowArtifacts: true
+
+      - name: Publicar artefacto no API (desktop-updates)
+        working-directory: frontend
+        env:
+          DESKTOP_UPDATES_PUBLISH_TOKEN: ${{ secrets.DESKTOP_UPDATES_PUBLISH_TOKEN }}
+          DESKTOP_UPDATES_API_BASE: ${{ vars.DESKTOP_UPDATES_API_BASE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${DESKTOP_UPDATES_PUBLISH_TOKEN:-}" ]]; then
+            echo "Sem secret DESKTOP_UPDATES_PUBLISH_TOKEN — a saltar upload ao API."
+            exit 0
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.upload_to_desktop_api }}" != "true" ]]; then
+            echo "workflow_dispatch: upload_to_desktop_api=false — a saltar."
+            exit 0
+          fi
+          if [[ -z "${DESKTOP_UPDATES_API_BASE:-}" ]]; then
+            echo "::warning::Define a variable DESKTOP_UPDATES_API_BASE no repositório para enviar ao API."
+            exit 0
+          fi
+          VERSION=$(node -e "console.log(require('./package.json').version)")
+          BUNDLE_DIR="src-tauri/target/${{ matrix.bundle_target }}/release/bundle"
+          NOTES="Release v${VERSION} (${{ matrix.updater_platform }}) — CI"
+          mapfile -t ART < <(node scripts/find-updater-artifact.cjs "$BUNDLE_DIR" "${{ matrix.updater_platform }}")
+          INSTALLER="${ART[0]:-}"
+          SIG="${ART[1]:-}"
+          if [[ ! -f "$INSTALLER" ]] || [[ ! -f "$SIG" ]]; then
+            echo "::error::Artefacto ou .sig não encontrado para ${{ matrix.updater_platform }} em $BUNDLE_DIR"
+            exit 1
+          fi
+          echo "Upload → ${DESKTOP_UPDATES_API_BASE} (platform=${{ matrix.updater_platform }}, version=${VERSION})"
+          TMP=$(mktemp)
+          CODE=$(curl -sS -o "$TMP" -w "%{http_code}" -X POST "${DESKTOP_UPDATES_API_BASE}/api/v1/desktop-updates/publish" \
+            -H "Authorization: Bearer ${DESKTOP_UPDATES_PUBLISH_TOKEN}" \
+            -F "appVersion=${VERSION}" \
+            -F "platform=${{ matrix.updater_platform }}" \
+            -F "notes=${NOTES}" \
+            -F "bundle=@${INSTALLER}" \
+            -F "signature=@${SIG}")
+          cat "$TMP"
+          echo ""
+          rm -f "$TMP"
+          if [[ "$CODE" != "200" && "$CODE" != "201" ]]; then
+            echo "::error::Upload falhou (HTTP $CODE)"
+            exit 1
+          fi
