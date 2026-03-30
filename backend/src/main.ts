@@ -6,6 +6,7 @@ import { join } from 'path';
 import * as express from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { resolvePublicUrls } from './config/resolve-public-urls';
 import { setupSwagger } from './swagger/setup-swagger';
 
 async function bootstrap() {
@@ -47,10 +48,20 @@ async function bootstrap() {
     }),
   );
 
-  /** `origin: '*'` não pode ser usado com `credentials: true` (regra CORS). Bearer vai no header. */
+  const publicUrls = resolvePublicUrls();
+  /** Com `CORS_ORIGIN` definido: lista explícita + credentials. Sem definir ou `*`: permissivo (Bearer no header). */
+  const cors =
+    publicUrls.corsOrigins?.length ?
+      {
+        origin: publicUrls.corsOrigins,
+        credentials: true as const,
+      }
+    : {
+        origin: '*' as const,
+        credentials: false as const,
+      };
   app.enableCors({
-    origin: '*',
-    credentials: false,
+    ...cors,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',

@@ -61,8 +61,8 @@ export class NotificationsService {
 
   private get filesBase(): string {
     const base = this.config
-      .getOrThrow<{ baseUrl: string }>('app')
-      .baseUrl.replace(/\/$/, '');
+      .getOrThrow<{ apiPublicOrigin: string }>('urls')
+      .apiPublicOrigin.replace(/\/$/, '');
     return `${base}/api/v1/files`;
   }
 

@@ -40,8 +40,32 @@ describe('AuthService', () => {
                   issuer: 'test',
                 };
               }
+              if (key === 'urls') {
+                return { apiPublicOrigin: 'http://localhost:3001' };
+              }
               if (key === 'app') {
-                return { baseUrl: 'http://localhost:3000' };
+                return {
+                  deepLinkScheme: 'syncyou',
+                  deepLinkPathAfterEmailConfirm: 'auth/email-verified',
+                };
+              }
+              if (key === 'oauth') {
+                return {
+                  frontendRedirectUrl: 'http://localhost:3000/oauth/callback',
+                  frontendRedirectAllowlist: ['http://localhost:3000/oauth/callback'],
+                  google: {
+                    enabled: false,
+                    clientId: '',
+                    clientSecret: '',
+                    callbackUrl: 'http://localhost:3001/api/v1/auth/google/callback',
+                  },
+                  microsoft: {
+                    enabled: false,
+                    clientId: '',
+                    clientSecret: '',
+                    callbackUrl: 'http://localhost:3001/api/v1/auth/microsoft/callback',
+                  },
+                };
               }
               if (key === 'security') {
                 return { otpPepper: 'test-pepper' };

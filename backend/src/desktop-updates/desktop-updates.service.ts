@@ -3,7 +3,6 @@ import {
   Injectable,
   InternalServerErrorException,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -112,28 +111,32 @@ export class DesktopUpdatesService {
     return saved;
   }
 
+  /**
+   * Manifest for Tauri `check()`. Returns `null` when there is nothing to offer;
+   * the HTTP layer should answer with 204 No Content so the updater treats it as “no update”.
+   */
   async getLatestUpdaterManifest(): Promise<{
     version: string;
     notes: string;
     pub_date: string;
     platforms: Record<string, { signature: string; url: string }>;
-  }> {
+  } | null> {
     const rows = await this.bundles.find({ order: { createdAt: 'DESC' } });
     if (rows.length === 0) {
-      throw new NotFoundException('Nenhum pacote de atualização publicado');
+      return null;
     }
 
     const distinct = [...new Set(rows.map((r) => r.appVersion))];
     const validVersions = distinct.filter((v) => semverValid(v)) as string[];
     const maxV = maxSatisfying(validVersions, '*', { includePrerelease: true });
     if (!maxV) {
-      throw new NotFoundException('Nenhuma versão semver válida encontrada');
+      return null;
     }
 
     const atVersion = rows.filter((r) => r.appVersion === maxV);
     const base = this.config.get<string>('desktopUpdates.apiPublicBaseUrl', '').replace(/\/$/, '');
     if (!base) {
-      throw new InternalServerErrorException('API_PUBLIC_BASE_URL não configurada');
+      throw new InternalServerErrorException('API_PUBLIC_ORIGIN / urls.apiPublicOrigin não configurada');
     }
 
     const platforms: Record<string, { signature: string; url: string }> = {};

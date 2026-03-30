@@ -1,7 +1,7 @@
 import { registerAs } from '@nestjs/config';
 
+/** URLs públicas: namespace `urls` (WEB_APP_ORIGIN, API_PUBLIC_ORIGIN). */
 export default registerAs('app', () => ({
-  baseUrl: process.env.APP_BASE_URL ?? 'http://localhost:3000',
   /** Esquema para abrir o app Tauri após confirmar e-mail (ex.: syncyou). */
   deepLinkScheme: process.env.APP_DEEP_LINK_SCHEME ?? 'syncyou',
   /** Caminho no deep link após confirmação (ex.: auth/email-verified). */

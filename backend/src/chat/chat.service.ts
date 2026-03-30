@@ -215,8 +215,8 @@ export class ChatService {
 
   private get filesBase(): string {
     return this.config
-      .getOrThrow<{ baseUrl: string }>('app')
-      .baseUrl.replace(/\/$/, '');
+      .getOrThrow<{ apiPublicOrigin: string }>('urls')
+      .apiPublicOrigin.replace(/\/$/, '');
   }
 
   private avatarUrlFor(user: User): string | null {

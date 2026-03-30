@@ -5,10 +5,12 @@ import {
   Get,
   Header,
   Post,
+  Res,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { ApiBody, ApiConsumes, ApiOperation, ApiSecurity, ApiTags } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -28,10 +30,16 @@ export class DesktopUpdatesController {
   @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   @Header('Pragma', 'no-cache')
   @ApiOperation({
-    summary: 'Manifest Tauri updater (JSON dinâmico a partir da base de dados)',
+    summary:
+      'Manifest Tauri updater (JSON dinâmico a partir da base de dados). 204 quando não há pacotes publicados.',
   })
-  getLatestJson() {
-    return this.desktopUpdates.getLatestUpdaterManifest();
+  async getLatestJson(@Res({ passthrough: true }) res: Response) {
+    const manifest = await this.desktopUpdates.getLatestUpdaterManifest();
+    if (manifest === null) {
+      res.status(204).send();
+      return;
+    }
+    return manifest;
   }
 
   @Post('publish')

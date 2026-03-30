@@ -91,8 +91,8 @@ export class AuthService {
     return this.config.getOrThrow<JwtConfigSlice>('jwt');
   }
 
-  private get appBaseUrl(): string {
-    return this.config.getOrThrow<{ baseUrl: string }>('app').baseUrl;
+  private get apiPublicOrigin(): string {
+    return this.config.getOrThrow<{ apiPublicOrigin: string }>('urls').apiPublicOrigin;
   }
 
   private get oauthCfg(): OauthConfigSlice {
@@ -110,7 +110,7 @@ export class AuthService {
   }
 
   private toUserResponse(user: User): AuthUserResponseDto {
-    const base = this.appBaseUrl.replace(/\/$/, '');
+    const base = this.apiPublicOrigin.replace(/\/$/, '');
     return {
       id: user.id,
       email: user.email,
@@ -345,7 +345,7 @@ export class AuthService {
       };
     }
 
-    const confirmUrl = `${this.appBaseUrl.replace(/\/$/, '')}/api/v1/auth/confirm-email?token=${emailVerificationToken}`;
+    const confirmUrl = `${this.apiPublicOrigin.replace(/\/$/, '')}/api/v1/auth/confirm-email?token=${emailVerificationToken}`;
 
     let emailSent = true;
     try {

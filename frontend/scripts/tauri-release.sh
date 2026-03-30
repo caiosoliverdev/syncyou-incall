@@ -26,11 +26,12 @@ cd "$ROOT"
 
 REPO_ROOT="$(cd "$ROOT/.." && pwd)"
 DEFAULT_KEY="${TAURI_SIGNING_KEY_FILE:-$REPO_ROOT/syncyou.key}"
-DEFAULT_DESKTOP_UPDATES_BASE="${SYNCYOU_DESKTOP_UPDATES_BASE:-http://localhost:3001/api/v1/desktop-updates}"
+# Base pública do manifest (latest.json). Local: SYNCYOU_DESKTOP_UPDATES_BASE=http://localhost:3001/api/v1/desktop-updates
+DEFAULT_DESKTOP_UPDATES_BASE="${SYNCYOU_DESKTOP_UPDATES_BASE:-https://teste2.syncyou.com.br/api/v1/desktop-updates}"
 
-# --- MESMO token que DESKTOP_UPDATES_PUBLISH_TOKEN no backend (.env). Produção: altere nos dois sítios. ---
+# --- MESMO token que DESKTOP_UPDATES_PUBLISH_TOKEN no backend (.env). Local: DESKTOP_UPDATES_API_BASE=http://localhost:3001 ---
 DESKTOP_UPDATES_PUBLISH_TOKEN='syncyou-local-desktop-publish-dev'
-DESKTOP_UPDATES_API_BASE='http://localhost:3001'
+DESKTOP_UPDATES_API_BASE='https://teste2.syncyou.com.br'
 # --------------------------------------------------------------------------------------------------------
 
 # Grava a mesma versão em todos os ficheiros que o updater / build usam (evita Cargo.toml ≠ package.json).
@@ -294,7 +295,7 @@ else
     echo "" >&2
     echo "Erro: upload falhou (HTTP ${HTTP_CODE:-?}). Sem registo na BD, GET latest.json devolve 404." >&2
     echo "  • No backend (.env): DESKTOP_UPDATES_PUBLISH_TOKEN igual ao valor em scripts/tauri-release.sh" >&2
-    echo "  • API_PUBLIC_BASE_URL no backend (URL pública do API, sem / no fim)" >&2
+    echo "  • API_PUBLIC_ORIGIN no backend (.env — URL pública do API, sem / no fim)" >&2
     echo "  • Reinicie o Nest depois de editar o .env" >&2
     exit 1
   fi
@@ -314,5 +315,5 @@ fi
 
 echo ""
 echo "==> Concluído. Base do manifest no cliente (tauri.conf endpoints): ${RELEASE_DOWNLOAD_BASE}/latest.json"
-echo "    Produção: HTTPS, API_PUBLIC_BASE_URL no servidor, e dangerousInsecureTransportProtocol: false quando for TLS."
+echo "    Produção: HTTPS, API_PUBLIC_ORIGIN no servidor, e dangerousInsecureTransportProtocol: false quando for TLS."
 echo ""

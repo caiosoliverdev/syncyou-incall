@@ -13,6 +13,7 @@ import { LinkPreviewModule } from './link-preview/link-preview.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { UsersModule } from './users/users.module';
 import appConfig from './config/app.config';
+import urlsConfig from './config/urls.config';
 import authConfig from './config/auth.config';
 import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
@@ -32,6 +33,7 @@ import { DesktopUpdatesModule } from './desktop-updates/desktop-updates.module';
         mailConfig,
         jwtConfig,
         appConfig,
+        urlsConfig,
         authConfig,
         securityConfig,
         oauthConfig,
