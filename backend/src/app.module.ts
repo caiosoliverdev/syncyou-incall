@@ -40,10 +40,9 @@ import { DesktopUpdatesModule } from './desktop-updates/desktop-updates.module';
         mediasoupConfig,
         desktopUpdatesConfig,
       ],
-      envFilePath: [
-        `.env.${process.env.NODE_ENV ?? 'development'}`,
-        '.env',
-      ],
+      // Nest: `config = Object.assign(parse(ficheiro), config)` por cada ficheiro existente.
+      // Com [`.env`, `.env.NODE_ENV`], no passo final os valores de `.env` sobrepõem os de `.env.production` (mesma chave).
+      envFilePath: ['.env', `.env.${process.env.NODE_ENV ?? 'development'}`],
     }),
     ThrottlerModule.forRoot([
       {

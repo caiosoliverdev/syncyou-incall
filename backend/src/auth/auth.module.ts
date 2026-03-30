@@ -23,6 +23,7 @@ import { SessionRegistryService } from './session/session-registry.service';
 import { SessionGateway } from './session/session.gateway';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { OauthGoogleEnvDiagnosticsService } from './oauth-google-env-diagnostics.service';
 import { PasswordResetOtp } from './entities/password-reset-otp.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { SessionLoginLog } from './entities/session-login-log.entity';
@@ -64,6 +65,7 @@ import { SessionLoginLog } from './entities/session-login-log.entity';
   ],
   controllers: [AuthController],
   providers: [
+    OauthGoogleEnvDiagnosticsService,
     SessionRegistryService,
     SessionGateway,
     AuthService,
