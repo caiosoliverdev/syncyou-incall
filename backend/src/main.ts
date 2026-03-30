@@ -2,8 +2,10 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { existsSync } from 'fs';
 import { join } from 'path';
 import * as express from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { resolvePublicUrls } from './config/resolve-public-urls';
@@ -15,6 +17,36 @@ async function bootstrap() {
   app.useWebSocketAdapter(new IoAdapter(app));
 
   app.use(cookieParser());
+
+  /** Next `output: "export"` (ex. /oauth/callback) quando API e UI partilham o mesmo host sem nginx a servir `out/`. */
+  const frontendStaticRoot = (() => {
+    const raw = process.env.FRONTEND_STATIC_DIR?.trim();
+    if (raw) return raw.startsWith('/') ? raw : join(process.cwd(), raw);
+    return join(process.cwd(), '..', 'frontend', 'out');
+  })();
+  if (existsSync(frontendStaticRoot)) {
+    const serveNextExport = express.static(frontendStaticRoot, {
+      extensions: ['html'],
+      index: ['index.html'],
+      maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0,
+    });
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      if (req.method !== 'GET' && req.method !== 'HEAD') {
+        next();
+        return;
+      }
+      if (req.path === '/api' || req.path.startsWith('/api/')) {
+        next();
+        return;
+      }
+      serveNextExport(req, res, next);
+    });
+  } else if (process.env.NODE_ENV === 'production') {
+    console.warn(
+      `[bootstrap] FRONTEND_STATIC_DIR / export Next não encontrado (${frontendStaticRoot}). ` +
+        `GET /oauth/callback e ficheiros estáticos da UI devolvem 404 — faz build do frontend ou define FRONTEND_STATIC_DIR.`,
+    );
+  }
 
   /** Binários do updater em `data/desktop-updates/bundles/`. O manifest `latest.json` vem da BD (Nest). */
   const desktopUpdatesBundles = join(
