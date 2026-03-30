@@ -122,6 +122,7 @@ import type {
 } from "@/lib/call-events";
 import { CALL_ANSWERED_EVENT, CALL_BROADCAST_CHANNEL } from "@/lib/call-events";
 import { openCallWindow, openIncomingCallWindow } from "@/lib/open-call-window";
+import { syncAppWindowAttention } from "@/lib/sync-app-window-attention";
 import { isTauri } from "@tauri-apps/api/core";
 import { AUTH_LOGOUT_REQUIRED_EVENT, clearTokens, saveTokens } from "@/lib/auth-tokens";
 import { addStickerCreated, addStickerFavorite } from "@/lib/sticker-local-storage";
@@ -628,20 +629,7 @@ export default function Home() {
   /** Janela em primeiro plano e não minimizada — usado para não tocar som se já estiver a ver o chat. */
   const appWindowHasAttentionRef = useRef(true);
   const syncWindowAttentionRef = useCallback(async () => {
-    try {
-      if (isTauri()) {
-        const w = getCurrentWindow();
-        const [minimized, focused] = await Promise.all([w.isMinimized(), w.isFocused()]);
-        const visible = document.visibilityState === "visible";
-        appWindowHasAttentionRef.current = !minimized && focused && visible;
-      } else {
-        appWindowHasAttentionRef.current =
-          document.visibilityState === "visible" && document.hasFocus();
-      }
-    } catch {
-      appWindowHasAttentionRef.current =
-        document.visibilityState === "visible" && document.hasFocus();
-    }
+    await syncAppWindowAttention(appWindowHasAttentionRef);
   }, []);
   const [showConversationInfoModal, setShowConversationInfoModal] = useState(false);
   const [draftByConversationId, setDraftByConversationId] = useState<Record<string, string>>({});

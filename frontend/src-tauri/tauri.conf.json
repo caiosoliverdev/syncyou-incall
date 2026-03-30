@@ -39,7 +39,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "devCsp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost https: http://127.0.0.1:* http://localhost:* ws: wss: data:",
+        "img-src": "'self' data: blob: https:",
+        "style-src": "'unsafe-inline' 'self'",
+        "font-src": "'self' data: https:",
+        "script-src": "'self' 'unsafe-inline' 'unsafe-eval'"
+      }
     }
   },
 

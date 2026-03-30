@@ -25,14 +25,14 @@ export default registerAs('oauth', (): OauthConfigSlice => {
     frontendRedirectAllowlist: u.oauthFrontendRedirectAllowlist,
     google: {
       enabled: !!process.env.OAUTH_GOOGLE_CLIENT_ID?.trim(),
-      clientId: process.env.OAUTH_GOOGLE_CLIENT_ID ?? '',
-      clientSecret: process.env.OAUTH_GOOGLE_CLIENT_SECRET ?? '',
+      clientId: process.env.OAUTH_GOOGLE_CLIENT_ID?.trim() ?? '',
+      clientSecret: process.env.OAUTH_GOOGLE_CLIENT_SECRET?.trim() ?? '',
       callbackUrl: u.oauthGoogleCallbackUrl,
     },
     microsoft: {
       enabled: !!process.env.OAUTH_MICROSOFT_CLIENT_ID?.trim(),
-      clientId: process.env.OAUTH_MICROSOFT_CLIENT_ID ?? '',
-      clientSecret: process.env.OAUTH_MICROSOFT_CLIENT_SECRET ?? '',
+      clientId: process.env.OAUTH_MICROSOFT_CLIENT_ID?.trim() ?? '',
+      clientSecret: process.env.OAUTH_MICROSOFT_CLIENT_SECRET?.trim() ?? '',
       callbackUrl: u.oauthMicrosoftCallbackUrl,
     },
   };
