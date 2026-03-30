@@ -9,6 +9,7 @@ import type { NextFunction, Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { resolvePublicUrls } from './config/resolve-public-urls';
+import { resolveFrontendStaticRoot } from './resolve-frontend-static-root';
 import { setupSwagger } from './swagger/setup-swagger';
 
 async function bootstrap() {
@@ -53,22 +54,29 @@ async function bootstrap() {
   });
 
   /** Next `output: "export"` (ex. /oauth/callback) quando API e UI partilham o mesmo host sem nginx a servir `out/`. */
-  const frontendStaticRoot = (() => {
-    const raw = process.env.FRONTEND_STATIC_DIR?.trim();
-    if (raw) return raw.startsWith('/') ? raw : join(process.cwd(), raw);
-    return join(process.cwd(), '..', 'frontend', 'out');
-  })();
-
-  const httpApp = app.getHttpAdapter().getInstance() as import('express').Application;
+  const frontendStaticRoot = resolveFrontendStaticRoot();
   const oauthCallbackHtml = join(frontendStaticRoot, 'oauth', 'callback.html');
   const oauthTauriHandoffHtml = join(frontendStaticRoot, 'oauth', 'tauri-handoff.html');
+
+  if (!existsSync(oauthCallbackHtml)) {
+    console.warn(
+      `[bootstrap] Next export em falta: ${oauthCallbackHtml} (cwd=${process.cwd()}, ` +
+        `FRONTEND_STATIC_DIR=${process.env.FRONTEND_STATIC_DIR ?? '(não definido)'}). ` +
+        `Faz build em frontend e copia out/, ou define FRONTEND_STATIC_DIR=/caminho/absoluto/para/out`,
+    );
+  }
+
+  const httpApp = app.getHttpAdapter().getInstance() as import('express').Application;
 
   const sendNextOAuthHtml =
     (absolutePath: string) => (_req: Request, res: Response) => {
       if (!existsSync(absolutePath)) {
         res.status(404).json({
           message:
-            'Export estático do Next em falta (oauth). Faz `cd frontend && npm run build`, copia `out/` para o servidor ou define FRONTEND_STATIC_DIR com o caminho absoluto de `out/`.',
+            'Export estático do Next em falta (oauth). Faz `cd frontend && npm run build`, copia a pasta `out/` para o servidor e define FRONTEND_STATIC_DIR com o caminho absoluto até `out/` (ex.: /var/www/syncyou/out).',
+          cwd: process.cwd(),
+          expectedFile: absolutePath,
+          frontendStaticRoot,
         });
         return;
       }
