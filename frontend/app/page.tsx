@@ -217,8 +217,7 @@ import {
   fetchPublicIp,
   getCachedClientGeo,
   getCachedPublicIp,
-  getClientGeo,
-  primeClientGeo,
+  getClientGeoForLogin,
 } from "@/lib/client-geo";
 
 type Theme = "light" | "dark";
@@ -735,7 +734,6 @@ export default function Home() {
   const messageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const splashTimerRef = useRef<number | null>(null);
   /** Evita múltiplos getCurrentPosition no mesmo ecrã; WebKit exige gesto do utilizador para o prompt. */
-  const loginGeoPrimedRef = useRef(false);
   const [mentionMenu, setMentionMenu] = useState<{
     open: boolean;
     atIndex: number;
@@ -995,18 +993,6 @@ export default function Home() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [resendSeconds]);
-
-  useEffect(() => {
-    if (authView !== "login") {
-      loginGeoPrimedRef.current = false;
-    }
-  }, [authView]);
-
-  const requestLoginGeoOnUserInteraction = useCallback(() => {
-    if (loginGeoPrimedRef.current) return;
-    loginGeoPrimedRef.current = true;
-    void primeClientGeo();
-  }, []);
 
   useEffect(() => {
     if (authView !== "platform") {
@@ -1444,7 +1430,7 @@ export default function Home() {
   const handleReactivateConfirm = async () => {
     if (!reactivatePrompt) return;
     setAuthError(null);
-    const geoFirst = await getClientGeo();
+    const geoFirst = await getClientGeoForLogin();
     setIsReactivateLoading(true);
     try {
       const geo = geoFirst;
@@ -1467,7 +1453,9 @@ export default function Home() {
     if (!login2faPending?.tempToken || code.length !== 6) return;
     setAuthError(null);
     const geo =
-      (await getClientGeo()) ?? getCachedClientGeo() ?? login2faPending.geo;
+      getCachedClientGeo() ??
+      (await getClientGeoForLogin()) ??
+      login2faPending.geo;
     setIsLogin2faLoading(true);
     try {
       const pubIp = getCachedPublicIp() ?? (await fetchPublicIp());
@@ -1488,12 +1476,11 @@ export default function Home() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError(null);
-    loginGeoPrimedRef.current = true;
     const fd = new FormData(event.currentTarget);
     const email = String(fd.get("email") ?? "").trim();
     const password = String(fd.get("password") ?? "");
-    /** Antes de setState — mantém o pedido de geo ligado ao gesto (Entrar) no WebKit/Tauri. */
-    const geoSnapshot = await getClientGeo();
+    /** Geo opcional com limite de tempo — evita primeiro clique “morto” à espera de GPS/permissão. */
+    const geoSnapshot = await getClientGeoForLogin();
     setIsLoginLoading(true);
     try {
       const pubIp = getCachedPublicIp() ?? (await fetchPublicIp());
@@ -6400,7 +6387,6 @@ export default function Home() {
           <>
           <form
             onSubmit={handleSubmit}
-            onPointerDownCapture={requestLoginGeoOnUserInteraction}
             className={`relative z-10 flex flex-1 flex-col ${isDesktopAuthShell ? "" : "min-h-[460px]"}`}
           >
             <div className="mb-4 flex justify-center">

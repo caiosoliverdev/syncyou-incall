@@ -31,65 +31,6 @@ function decodeJwtExpMs(accessToken: string): number | null {
 
 let refreshInFlight: Promise<boolean> | null = null;
 
-export async function refreshRequest(refreshToken: string): Promise<LoginResponse> {
-  return apiJson<LoginResponse>("/auth/refresh", {
-    method: "POST",
-    body: JSON.stringify({ refreshToken }),
-  });
-}
-
-export async function ensureAccessTokenFresh(): Promise<boolean> {
-  if (typeof window === "undefined") return true;
-
-  const access = getAccessToken();
-  const refresh = getRefreshToken();
-  if (!access && !refresh) return false;
-
-  let expiresAt = getAccessExpiresAtMs();
-  if (expiresAt == null && access) {
-    const fromJwt = decodeJwtExpMs(access);
-    if (fromJwt != null) {
-      setAccessExpiresAtMs(fromJwt);
-      expiresAt = fromJwt;
-    }
-  }
-
-  const now = Date.now();
-  const needRefresh =
-    !access || (expiresAt != null && now + REFRESH_MARGIN_MS >= expiresAt);
-
-  if (!needRefresh) return true;
-  if (!refresh) {
-    clearTokens();
-    window.dispatchEvent(new Event(AUTH_LOGOUT_REQUIRED_EVENT));
-    return false;
-  }
-
-  if (refreshInFlight) return refreshInFlight;
-
-  refreshInFlight = (async (): Promise<boolean> => {
-    try {
-      const res = await refreshRequest(refresh);
-      saveTokens(res.accessToken, res.refreshToken, res.expiresIn);
-      return true;
-    } catch {
-      clearTokens();
-      window.dispatchEvent(new Event(AUTH_LOGOUT_REQUIRED_EVENT));
-      return false;
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-
-  return refreshInFlight;
-}
-
-/** Origem HTTP da API (sem `/api/v1`), ex. para Socket.IO. */
-export function apiOrigin(): string {
-  const b = base();
-  return b.replace(/\/api\/v1$/, "") || "http://localhost:3001";
-}
-
 export type ApiErrorBody = {
   message?: string | string[];
   statusCode?: number;
@@ -127,16 +68,109 @@ function parseMessage(body: ApiErrorBody): string {
   return "Pedido falhou";
 }
 
-export async function apiJson<T>(
-  path: string,
-  options: RequestInit & { auth?: boolean } = {},
-): Promise<T> {
+/**
+ * POST /auth/refresh com fetch directo (sem passar por apiJson) para evitar recursão
+ * com retry 401.
+ */
+export async function refreshRequest(refreshToken: string): Promise<LoginResponse> {
+  const res = await fetch(`${base()}/auth/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refreshToken }),
+  });
+  const text = await res.text();
+  let data: unknown = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
+  if (!res.ok) {
+    const err = data as ApiErrorBody;
+    throw new ApiError(parseMessage(err), res.status, err.code);
+  }
+  return data as LoginResponse;
+}
+
+function logoutSessionAndNotify(): void {
+  clearTokens();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_LOGOUT_REQUIRED_EVENT));
+  }
+}
+
+/** Renova tokens com o refresh guardado; deduplica pedidos em paralelo. */
+async function performTokenRefresh(): Promise<boolean> {
+  if (typeof window === "undefined") return true;
+  const refresh = getRefreshToken();
+  if (!refresh) {
+    logoutSessionAndNotify();
+    return false;
+  }
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = (async (): Promise<boolean> => {
+    try {
+      const res = await refreshRequest(refresh);
+      saveTokens(res.accessToken, res.refreshToken, res.expiresIn);
+      return true;
+    } catch {
+      logoutSessionAndNotify();
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
+export async function ensureAccessTokenFresh(): Promise<boolean> {
+  if (typeof window === "undefined") return true;
+
+  const access = getAccessToken();
+  const refresh = getRefreshToken();
+  if (!access && !refresh) return false;
+
+  let expiresAt = getAccessExpiresAtMs();
+  if (expiresAt == null && access) {
+    const fromJwt = decodeJwtExpMs(access);
+    if (fromJwt != null) {
+      setAccessExpiresAtMs(fromJwt);
+      expiresAt = fromJwt;
+    }
+  }
+
+  const now = Date.now();
+  const needRefresh =
+    !access ||
+    (expiresAt != null && now + REFRESH_MARGIN_MS >= expiresAt) ||
+    (Boolean(access) && expiresAt == null);
+
+  if (!needRefresh) return true;
+  if (!refresh) {
+    logoutSessionAndNotify();
+    return false;
+  }
+
+  return performTokenRefresh();
+}
+
+/** Origem HTTP da API (sem `/api/v1`), ex. para Socket.IO. */
+export function apiOrigin(): string {
+  const b = base();
+  return b.replace(/\/api\/v1$/, "") || "http://localhost:3001";
+}
+
+type ApiJsonOptions = RequestInit & { auth?: boolean; _authRetry?: boolean };
+
+export async function apiJson<T>(path: string, options: ApiJsonOptions = {}): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type") && options.body && !(options.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  const { auth, ...rest } = options;
+  const { auth, _authRetry, ...rest } = options;
   if (auth && typeof window !== "undefined") {
     const fresh = await ensureAccessTokenFresh();
     if (!fresh) {
@@ -150,11 +184,33 @@ export async function apiJson<T>(
 
   const res = await fetch(`${base()}${path}`, { ...rest, headers });
   const text = await res.text();
-  const data = text ? (JSON.parse(text) as unknown) : {};
+  let data: unknown = {};
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = {};
+  }
 
   if (!res.ok) {
     const err = data as ApiErrorBody;
     const msg = parseMessage(err);
+    if (
+      res.status === 401 &&
+      auth &&
+      !_authRetry &&
+      typeof window !== "undefined" &&
+      path !== "/auth/refresh"
+    ) {
+      const recovered = await performTokenRefresh();
+      if (recovered) {
+        return apiJson<T>(path, { ...options, _authRetry: true });
+      }
+      throw new ApiError("Sessão expirada. Entre novamente.", 401);
+    }
+    if (res.status === 401 && auth) {
+      logoutSessionAndNotify();
+      throw new ApiError(msg || "Sessão inválida. Entre novamente.", res.status, err.code, err.email, err.tempToken);
+    }
     throw new ApiError(msg, res.status, err.code, err.email, err.tempToken);
   }
 
@@ -945,41 +1001,52 @@ export async function removeStickerBackgroundRequest(
   conversationId: string,
   file: File,
 ): Promise<Blob> {
-  if (typeof window !== "undefined") {
-    const fresh = await ensureAccessTokenFresh();
-    if (!fresh) {
+  const attempt = async (isRetry: boolean): Promise<Blob> => {
+    if (typeof window !== "undefined") {
+      const fresh = await ensureAccessTokenFresh();
+      if (!fresh) {
+        throw new ApiError("Sessão expirada. Entre novamente.", 401);
+      }
+    }
+    const fd = new FormData();
+    fd.append("file", file, file.name);
+    const headers = new Headers();
+    if (typeof window !== "undefined") {
+      const token = window.localStorage.getItem("syncyou_access_token");
+      if (token) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+    }
+    const res = await fetch(
+      `${base()}/chat/conversations/${encodeURIComponent(conversationId)}/sticker-remove-background`,
+      {
+        method: "POST",
+        body: fd,
+        headers,
+      },
+    );
+    if (res.status === 401 && !isRetry && typeof window !== "undefined") {
+      const ok = await performTokenRefresh();
+      if (ok) return attempt(true);
       throw new ApiError("Sessão expirada. Entre novamente.", 401);
     }
-  }
-  const fd = new FormData();
-  fd.append("file", file, file.name);
-  const headers = new Headers();
-  if (typeof window !== "undefined") {
-    const token = window.localStorage.getItem("syncyou_access_token");
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
+    if (!res.ok) {
+      const text = await res.text();
+      let msg = "Pedido falhou";
+      try {
+        const err = JSON.parse(text) as ApiErrorBody;
+        msg = parseMessage(err);
+      } catch {
+        if (text) msg = text.slice(0, 200);
+      }
+      if (res.status === 401) {
+        logoutSessionAndNotify();
+      }
+      throw new ApiError(msg, res.status);
     }
-  }
-  const res = await fetch(
-    `${base()}/chat/conversations/${encodeURIComponent(conversationId)}/sticker-remove-background`,
-    {
-      method: "POST",
-      body: fd,
-      headers,
-    },
-  );
-  if (!res.ok) {
-    const text = await res.text();
-    let msg = "Pedido falhou";
-    try {
-      const err = JSON.parse(text) as ApiErrorBody;
-      msg = parseMessage(err);
-    } catch {
-      if (text) msg = text.slice(0, 200);
-    }
-    throw new ApiError(msg, res.status);
-  }
-  return res.blob();
+    return res.blob();
+  };
+  return attempt(false);
 }
 
 export async function uploadChatAttachmentRequest(
@@ -1015,47 +1082,63 @@ export function uploadChatAttachmentRequestWithProgress(
 ): Promise<ChatAttachmentUploadResult> {
   const { videoTrim, onUploadProgress } = options;
   return (async () => {
-    if (typeof window !== "undefined") {
-      const fresh = await ensureAccessTokenFresh();
-      if (!fresh) {
-        throw new ApiError("Sessão expirada. Entre novamente.", 401);
+    const run = async (isRetry: boolean): Promise<ChatAttachmentUploadResult> => {
+      if (typeof window !== "undefined") {
+        const fresh = await ensureAccessTokenFresh();
+        if (!fresh) {
+          throw new ApiError("Sessão expirada. Entre novamente.", 401);
+        }
       }
-    }
-    return new Promise<ChatAttachmentUploadResult>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    const fd = new FormData();
-    const blob = file instanceof File ? file : file;
-    fd.append("file", blob, file instanceof File ? file.name : fileName);
-    if (videoTrim) {
-      fd.append("videoTrimStartSec", String(videoTrim.trimStartSec));
-      fd.append("videoTrimEndSec", String(videoTrim.trimEndSec));
-    }
-    const path = `/chat/conversations/${encodeURIComponent(conversationId)}/attachments`;
-    xhr.open("POST", `${base()}${path}`);
-    xhr.responseType = "json";
-    if (typeof window !== "undefined") {
-      const token = window.localStorage.getItem("syncyou_access_token");
-      if (token) {
-        xhr.setRequestHeader("Authorization", `Bearer ${token}`);
-      }
-    }
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable && onUploadProgress) {
-        onUploadProgress(Math.min(100, Math.round((100 * e.loaded) / e.total)));
-      }
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const fd = new FormData();
+        const blob = file instanceof File ? file : file;
+        fd.append("file", blob, file instanceof File ? file.name : fileName);
+        if (videoTrim) {
+          fd.append("videoTrimStartSec", String(videoTrim.trimStartSec));
+          fd.append("videoTrimEndSec", String(videoTrim.trimEndSec));
+        }
+        const path = `/chat/conversations/${encodeURIComponent(conversationId)}/attachments`;
+        xhr.open("POST", `${base()}${path}`);
+        xhr.responseType = "json";
+        if (typeof window !== "undefined") {
+          const token = window.localStorage.getItem("syncyou_access_token");
+          if (token) {
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+          }
+        }
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable && onUploadProgress) {
+            onUploadProgress(Math.min(100, Math.round((100 * e.loaded) / e.total)));
+          }
+        };
+        xhr.onload = () => {
+          if (xhr.status === 401 && !isRetry && typeof window !== "undefined") {
+            void performTokenRefresh().then((ok) => {
+              if (ok) {
+                void run(true).then(resolve).catch(reject);
+              } else {
+                reject(new ApiError("Sessão expirada. Entre novamente.", 401));
+              }
+            });
+            return;
+          }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve(xhr.response as ChatAttachmentUploadResult);
+            return;
+          }
+          const raw = xhr.response as ApiErrorBody | undefined;
+          const msg = raw ? parseMessage(raw) : "Pedido falhou";
+          if (xhr.status === 401) {
+            logoutSessionAndNotify();
+          }
+          reject(new ApiError(msg, xhr.status, raw?.code, raw?.email, raw?.tempToken));
+        };
+        xhr.onerror = () => reject(new ApiError("Falha de rede", 0));
+        xhr.send(fd);
+      });
     };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        resolve(xhr.response as ChatAttachmentUploadResult);
-        return;
-      }
-      const raw = xhr.response as ApiErrorBody | undefined;
-      const msg = raw ? parseMessage(raw) : "Pedido falhou";
-      reject(new ApiError(msg, xhr.status, raw?.code, raw?.email, raw?.tempToken));
-    };
-    xhr.onerror = () => reject(new ApiError("Falha de rede", 0));
-    xhr.send(fd);
-  });
+    return run(false);
   })();
 }
 

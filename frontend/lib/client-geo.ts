@@ -127,3 +127,21 @@ export function getClientGeo(): Promise<ClientGeo | null> {
   if (hit) return Promise.resolve(hit);
   return primeClientGeo();
 }
+
+/**
+ * Para login / 2FA: não bloqueia o primeiro clique à espera de permissão ou GPS (WebKit/Tauri).
+ * Se não houver cache, tenta obter coordenadas com limite de tempo; caso contrário segue sem geo.
+ */
+const LOGIN_GEO_BUDGET_MS = 900;
+
+export async function getClientGeoForLogin(): Promise<ClientGeo | null> {
+  const hit = getCachedClientGeo();
+  if (hit) return hit;
+  void fetchPublicIp();
+  return Promise.race([
+    getClientGeo(),
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), LOGIN_GEO_BUDGET_MS);
+    }),
+  ]);
+}
