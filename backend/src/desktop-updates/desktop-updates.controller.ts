@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Post,
   Res,
   UploadedFiles,
@@ -27,19 +26,18 @@ export class DesktopUpdatesController {
   constructor(private readonly desktopUpdates: DesktopUpdatesService) {}
 
   @Get('latest.json')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
-  @Header('Pragma', 'no-cache')
   @ApiOperation({
     summary:
       'Manifest Tauri updater (JSON dinâmico a partir da base de dados). 204 quando não há pacotes publicados.',
   })
-  async getLatestJson(@Res({ passthrough: true }) res: Response) {
+  async getLatestJson(@Res() res: Response) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     const manifest = await this.desktopUpdates.getLatestUpdaterManifest();
     if (manifest === null) {
-      res.status(204).send();
-      return;
+      return res.status(204).send();
     }
-    return manifest;
+    return res.json(manifest);
   }
 
   @Post('publish')
