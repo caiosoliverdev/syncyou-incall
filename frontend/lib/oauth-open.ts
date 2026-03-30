@@ -14,13 +14,8 @@ import { fetchPublicIp, getCachedPublicIp } from "@/lib/client-geo";
 
 export type OAuthContinueProvider = "google" | "microsoft";
 
-/** Em Tauri o origin pode ser tauri:// ou asset: — OAuth precisa do host público (build: NEXT_PUBLIC_APP_ORIGIN). */
-function webAppOriginForOAuth(): string {
-  const env = process.env.NEXT_PUBLIC_APP_ORIGIN?.trim();
-  if (env) return env.replace(/\/+$/, "");
-  if (typeof window !== "undefined") return window.location.origin;
-  return "http://localhost:3000";
-}
+/** Mesmo padrão que confirmar e-mail: deep link para o app (allowlist na API), não página HTTPS. */
+const TAURI_OAUTH_POST_LOGIN_REDIRECT = "syncyou://oauth/callback";
 
 const OAUTH_WEBVIEW_LABEL = "oauth-login";
 
@@ -51,11 +46,8 @@ export async function oauthNavigateOrOpen(options: {
   provider: OAuthContinueProvider;
   email?: string;
 }): Promise<void> {
-  const origin = webAppOriginForOAuth();
-
   const email = options.email?.trim();
   const { provider } = options;
-  const tauriHandoffUrl = `${origin}/oauth/tauri-handoff`;
 
   if (isTauri()) {
     clearOAuthBridge();
@@ -137,8 +129,18 @@ export async function oauthNavigateOrOpen(options: {
     const pip = getCachedPublicIp();
     const startUrl =
       provider === "google"
-        ? oauthGoogleStartUrl(email, tauriHandoffUrl, bridgeId, pip ?? undefined)
-        : oauthMicrosoftStartUrl(email, tauriHandoffUrl, bridgeId, pip ?? undefined);
+        ? oauthGoogleStartUrl(
+            email,
+            TAURI_OAUTH_POST_LOGIN_REDIRECT,
+            bridgeId,
+            pip ?? undefined,
+          )
+        : oauthMicrosoftStartUrl(
+            email,
+            TAURI_OAUTH_POST_LOGIN_REDIRECT,
+            bridgeId,
+            pip ?? undefined,
+          );
     await closeOAuthWebviewIfOpen();
     const oauthWin = new WebviewWindow(OAUTH_WEBVIEW_LABEL, {
       url: startUrl,
