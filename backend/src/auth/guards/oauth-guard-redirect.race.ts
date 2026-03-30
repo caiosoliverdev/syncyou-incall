@@ -1,4 +1,5 @@
 import { BadRequestException, type ExecutionContext } from '@nestjs/common';
+import { parse as parseQuerystring } from 'node:querystring';
 import type { Request, Response } from 'express';
 
 function firstQueryString(v: unknown): string | undefined {
@@ -8,24 +9,49 @@ function firstQueryString(v: unknown): string | undefined {
 }
 
 function isIdpCallbackPath(req: Request): boolean {
-  const p = req.path || '';
-  return p.endsWith('/google/callback') || p.endsWith('/microsoft/callback');
+  const p = (req.path || '').replace(/\/+$/, '');
+  return /\/google\/callback$/.test(p) || /\/microsoft\/callback$/.test(p);
+}
+
+/** Preferir `originalUrl` com query; se o proxy a truncar, usar `url` (pode ainda ter `?code=`). */
+function rawUrl(req: Request): string {
+  const a = (req.originalUrl || '').split('#')[0];
+  const b = (req.url || '').split('#')[0];
+  if (a.includes('?')) return a;
+  if (b.includes('?')) return b;
+  return a || b;
+}
+
+function rawUrlLooksLikeOAuthCallback(req: Request): boolean {
+  const s = rawUrl(req);
+  return /(?:^|[?&])code=/.test(s) || /(?:^|[?&])error=/.test(s);
 }
 
 /**
- * Alguns proxies partem a query string; o Passport só lê `req.query`.
+ * Proxies ou stacks estranhos podem deixar `req.query` vazio; o Passport só lê `req.query`.
+ * Reatribuímos o objeto inteiro para garantir que o Passport vê `code` / `state`.
  */
 function mergeQueryFromOriginalUrl(req: Request): void {
-  const raw = req.originalUrl || req.url;
-  if (!raw || !raw.includes('?')) return;
+  const full = rawUrl(req);
+  const qMark = full.indexOf('?');
+  if (qMark < 0) return;
+  const qs = full.slice(qMark + 1);
+  if (!qs) return;
   try {
-    const u = new URL(raw, 'http://oauth-callback.local');
-    const q = req.query as Record<string, unknown>;
-    for (const key of ['code', 'error', 'state', 'error_description', 'error_uri']) {
-      if (firstQueryString(q[key]) !== undefined) continue;
-      const v = u.searchParams.get(key);
-      if (v !== null) q[key] = v;
+    const parsed = parseQuerystring(qs);
+    const fromUrl: Record<string, string | string[]> = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (typeof v === 'string' && v.length > 0) {
+        fromUrl[k] = v;
+      } else if (Array.isArray(v)) {
+        const strings = v.filter((x): x is string => typeof x === 'string' && x.length > 0);
+        if (strings.length === 1) fromUrl[k] = strings[0];
+        else if (strings.length > 1) fromUrl[k] = strings;
+      }
     }
+    const prev = req.query as Record<string, unknown>;
+    const merged = { ...prev, ...fromUrl } as Request['query'];
+    (req as Request & { query: Request['query'] }).query = merged;
   } catch {
     /* ignore */
   }
@@ -62,7 +88,8 @@ export async function raceOAuthRedirectGuard(
 
   if (isIdpCallbackPath(req)) {
     throw new BadRequestException(
-      'Callback OAuth sem parâmetros code/error na query. Confirma o proxy (query string até ao Node) ou inicia o login outra vez.',
+      'Callback OAuth sem parâmetros code/error (nem em req.query nem na URL bruta). ' +
+        'Confirma o proxy (ex.: nginx `proxy_pass` com `$request_uri` ou `$is_args$args`) ou inicia o login outra vez.',
     );
   }
 
