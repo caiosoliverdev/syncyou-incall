@@ -23,12 +23,10 @@ import { generateSecret, generateURI, verifySync } from 'otplib';
 import { In, IsNull, Repository } from 'typeorm';
 import { MailerService } from '@nestjs-modules/mailer';
 import type { SignOptions } from 'jsonwebtoken';
-import type { OauthConfigSlice } from '../config/oauth.config';
 import type { JwtConfigSlice } from './jwt-config.types';
 import { PasswordResetOtp } from './entities/password-reset-otp.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { SessionLoginLog } from './entities/session-login-log.entity';
-import type { OAuthCompleteDto } from './dto/oauth-complete.dto';
 import type { RegisterResponseDto } from './dto/register-response.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { DeactivateAccountDto } from './dto/deactivate-account.dto';
@@ -59,9 +57,7 @@ import type { SessionsResponseDto } from './dto/sessions-response.dto';
 import { ContactsService } from '../contacts/contacts.service';
 import { User } from '../users/entities/user.entity';
 import { UsersService } from '../users/users.service';
-import { OAuthBridgeService } from './oauth-bridge/oauth-bridge.service';
 import { SessionRegistryService } from './session/session-registry.service';
-import type { OAuthProfilePayload } from './types/oauth-profile.types';
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
@@ -81,7 +77,6 @@ export class AuthService {
     private readonly otpRepo: Repository<PasswordResetOtp>,
     @InjectRepository(SessionLoginLog)
     private readonly sessionLogRepo: Repository<SessionLoginLog>,
-    private readonly oauthBridge: OAuthBridgeService,
     private readonly sessionRegistry: SessionRegistryService,
     @Inject(forwardRef(() => ContactsService))
     private readonly contactsService: ContactsService,
@@ -93,10 +88,6 @@ export class AuthService {
 
   private get apiPublicOrigin(): string {
     return this.config.getOrThrow<{ apiPublicOrigin: string }>('urls').apiPublicOrigin;
-  }
-
-  private get oauthCfg(): OauthConfigSlice {
-    return this.config.getOrThrow<OauthConfigSlice>('oauth');
   }
 
   private hashRefresh(raw: string): string {
@@ -406,8 +397,8 @@ export class AuthService {
       throw new UnauthorizedException({
         statusCode: 401,
         message:
-          'Esta conta usa início de sessão com Google ou Microsoft. Utilize um desses métodos.',
-        code: 'OAUTH_ONLY',
+          'Esta conta não tem senha definida. Utilize recuperar senha para definir uma.',
+        code: 'NO_PASSWORD',
         email: user.email,
       });
     }
@@ -488,47 +479,6 @@ export class AuthService {
       loginMethod: 'totp_2fa',
       clientPublicIp: dto.clientPublicIp,
     });
-  }
-
-  async oauthReactivateWithToken(
-    reactivationToken: string,
-    req?: Request,
-    clientPublicIp?: string,
-  ): Promise<TokensResponseDto> {
-    let payload: { typ?: string; sub?: string };
-    try {
-      payload = await this.jwtService.verifyAsync<{
-        typ?: string;
-        sub?: string;
-      }>(reactivationToken);
-    } catch {
-      throw new BadRequestException(
-        'Token de reativação inválido ou expirado.',
-      );
-    }
-    if (payload.typ !== 'oauth_reactivate' || !payload.sub) {
-      throw new BadRequestException('Token de reativação inválido.');
-    }
-    const user = await this.usersService.findActiveById(payload.sub);
-    if (!user || !user.accountDisabledAt) {
-      throw new BadRequestException(
-        'Conta não está desativada ou já foi reativada.',
-      );
-    }
-    user.accountDisabledAt = null;
-    await this.usersService.save(user);
-    return this.issueTokens(user, {
-      req,
-      loginMethod: 'oauth_reactivate',
-      clientPublicIp,
-    });
-  }
-
-  private async signOAuthReactivateToken(userId: string): Promise<string> {
-    return this.jwtService.signAsync(
-      { typ: 'oauth_reactivate', sub: userId },
-      { expiresIn: '15m' },
-    );
   }
 
   private async issueTokens(
@@ -841,7 +791,7 @@ export class AuthService {
     }
     if (user.passwordHash == null) {
       throw new BadRequestException(
-        'Esta conta não tem senha. Inicie sessão com Google ou Microsoft.',
+        'Esta conta não tem senha. Utilize recuperar senha para definir uma.',
       );
     }
     const ok = await argon2.verify(user.passwordHash, dto.password);
@@ -864,7 +814,7 @@ export class AuthService {
 
     if (user.passwordHash == null) {
       throw new BadRequestException(
-        'Esta conta não tem senha. Inicie sessão com Google ou Microsoft, ou use recuperar senha para definir uma.',
+        'Esta conta não tem senha. Utilize recuperar senha para definir uma.',
       );
     }
 
@@ -1030,336 +980,6 @@ export class AuthService {
     return { message: 'Senha redefinida com sucesso.' };
   }
 
-  /**
-   * Nunca usar o path de callback do IdP (google ou microsoft) como destino da UI: o Google usa esse
-   * URL com `code`; a UI recebe `oauth=ok` e tokens noutro path (ex.: /oauth/callback).
-   */
-  private sanitizeFrontendConsumeBase(url: string): string {
-    const trimmed = url.replace(/\/$/, '');
-    try {
-      const u = new URL(trimmed);
-      if (/\/auth\/(google|microsoft)\/callback$/.test(u.pathname)) {
-        const fixed = `${this.oauthCfg.webAppOrigin.replace(/\/$/, '')}/oauth/callback`;
-        this.logger.warn(
-          `Redirect OAuth da UI apontava para o callback do IdP (${trimmed}); a usar ${fixed}. Corrige OAUTH_FRONTEND_REDIRECT_URL.`,
-        );
-        return fixed;
-      }
-    } catch {
-      return trimmed;
-    }
-    return trimmed;
-  }
-
-  private oauthFrontendBase(redirectOverride?: string): string {
-    const def = this.sanitizeFrontendConsumeBase(
-      this.oauthCfg.frontendRedirectUrl.replace(/\/$/, ''),
-    );
-    if (!redirectOverride?.trim()) return def;
-    const n = redirectOverride.trim().replace(/\/$/, '');
-    if (this.oauthCfg.frontendRedirectAllowlist.includes(n)) {
-      return this.sanitizeFrontendConsumeBase(n);
-    }
-    return def;
-  }
-
-  private oauthSignUrl(
-    params: Record<string, string>,
-    redirectOverride?: string,
-  ): string {
-    const base = this.oauthFrontendBase(redirectOverride);
-    const u = new URL(base);
-    for (const [k, v] of Object.entries(params)) {
-      u.searchParams.set(k, v);
-    }
-    return u.toString();
-  }
-
-  private oauthSuccessRedirect(
-    tokens: TokensResponseDto,
-    redirectOverride?: string,
-  ): string {
-    return this.oauthSignUrl(
-      {
-        oauth: 'ok',
-        access_token: tokens.accessToken,
-        refresh_token: tokens.refreshToken,
-        expires_in: String(tokens.expiresIn),
-      },
-      redirectOverride,
-    );
-  }
-
-  /** Tokens enviados por Socket.IO para a app Tauri; o browser só recebe oauth=ok&socket=1. */
-  private oauthSuccessRedirectSocket(
-    tokens: TokensResponseDto,
-    redirectOverride: string | undefined,
-    bridgeId: string,
-  ): string {
-    this.oauthBridge.emit(bridgeId, {
-      kind: 'tokens',
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresIn: tokens.expiresIn,
-    });
-    return this.oauthSignUrl({ oauth: 'ok', socket: '1' }, redirectOverride);
-  }
-
-  private oauthSignupRedirectSocket(
-    signupToken: string,
-    redirectOverride: string | undefined,
-    bridgeId: string,
-  ): string {
-    this.oauthBridge.emit(bridgeId, { kind: 'signup', signupToken });
-    return this.oauthSignUrl({ oauth: 'signup', socket: '1' }, redirectOverride);
-  }
-
-  private async oauthReactivateRedirectSocket(
-    reactivationToken: string,
-    redirectOverride: string | undefined,
-    bridgeId: string,
-  ): Promise<string> {
-    this.oauthBridge.emit(bridgeId, {
-      kind: 'disabled_confirm',
-      reactivationToken,
-    });
-    return this.oauthSignUrl({ oauth: 'reactivate', socket: '1' }, redirectOverride);
-  }
-
-  async buildOAuthRedirectUrl(
-    profile: OAuthProfilePayload | undefined,
-    frontendRedirectOverride?: string,
-    bridgeId?: string,
-    req?: Request,
-    clientPublicIpFromState?: string,
-  ): Promise<string> {
-    const fail = (code: string, message?: string) => {
-      if (bridgeId) {
-        this.oauthBridge.emit(bridgeId, { kind: 'error', code, message });
-      }
-      return this.oauthSignUrl(
-        {
-          oauth: 'err',
-          code,
-          ...(message ? { message } : {}),
-          ...(bridgeId ? { socket: '1' } : {}),
-        },
-        frontendRedirectOverride,
-      );
-    };
-
-    if (
-      !profile ||
-      (profile.provider !== 'google' && profile.provider !== 'microsoft') ||
-      !profile.oauthSubject?.trim()
-    ) {
-      return fail(
-        'OAUTH_PROFILE_MISSING',
-        'Perfil OAuth em falta (Passport). Inicia novamente o início de sessão.',
-      );
-    }
-
-    const existing = await this.usersService.findByProviderAndSubject(
-      profile.provider,
-      profile.oauthSubject,
-    );
-    if (existing) {
-      if (!existing.emailVerifiedAt) {
-        return fail('EMAIL_NOT_VERIFIED');
-      }
-      if (existing.accountDisabledAt) {
-        const reactivationToken = await this.signOAuthReactivateToken(existing.id);
-        if (bridgeId) {
-          return this.oauthReactivateRedirectSocket(
-            reactivationToken,
-            frontendRedirectOverride,
-            bridgeId,
-          );
-        }
-        return this.oauthSignUrl(
-          {
-            oauth: 'reactivate',
-            reactivation_token: reactivationToken,
-          },
-          frontendRedirectOverride,
-        );
-      }
-      if (existing.totpSecret && existing.twoFactorEnabledAt) {
-        const tempToken = await this.sign2faTempToken(existing.id);
-        if (bridgeId) {
-          this.oauthBridge.emit(bridgeId, {
-            kind: '2fa_required',
-            tempToken,
-          });
-          return this.oauthSignUrl(
-            { oauth: '2fa', socket: '1' },
-            frontendRedirectOverride,
-          );
-        }
-        return this.oauthSignUrl(
-          {
-            oauth: '2fa',
-            temp_token: tempToken,
-          },
-          frontendRedirectOverride,
-        );
-      }
-      const oauthLoginMethod =
-        profile.provider === 'google' ? 'oauth_google' : 'oauth_microsoft';
-      const tokens = await this.issueTokens(existing, {
-        req,
-        loginMethod: oauthLoginMethod,
-        clientPublicIp: clientPublicIpFromState,
-      });
-      return bridgeId
-        ? this.oauthSuccessRedirectSocket(
-            tokens,
-            frontendRedirectOverride,
-            bridgeId,
-          )
-        : this.oauthSuccessRedirect(tokens, frontendRedirectOverride);
-    }
-
-    const byEmail = await this.usersService.findActiveByEmail(profile.email);
-
-    /** Conta só com email+senha: vincular o mesmo email verificado pelo IdP OAuth. */
-    if (byEmail?.passwordHash && !byEmail.oauthSubject) {
-      if (!byEmail.emailVerifiedAt) {
-        byEmail.emailVerifiedAt = new Date();
-      }
-      byEmail.oauthSubject = profile.oauthSubject;
-      byEmail.authProvider = profile.provider;
-      await this.usersService.save(byEmail);
-      /** Não substituir foto já definida (ex.: upload em /auth/me/avatar ou registo com foto). */
-      if (!byEmail.avatarUrl?.trim()) {
-        const avatarUrl = await this.maybeSaveAvatarFromUrl(byEmail.id, profile.picture);
-        if (avatarUrl) {
-          byEmail.avatarUrl = avatarUrl;
-          await this.usersService.save(byEmail);
-        }
-      }
-      const oauthLoginMethod =
-        profile.provider === 'google' ? 'oauth_google' : 'oauth_microsoft';
-      const tokens = await this.issueTokens(byEmail, {
-        req,
-        loginMethod: oauthLoginMethod,
-        clientPublicIp: clientPublicIpFromState,
-      });
-      return bridgeId
-        ? this.oauthSuccessRedirectSocket(
-            tokens,
-            frontendRedirectOverride,
-            bridgeId,
-          )
-        : this.oauthSuccessRedirect(tokens, frontendRedirectOverride);
-    }
-
-    if (byEmail?.passwordHash) {
-      return fail(
-        'OAUTH_ACCOUNT_CONFLICT',
-        'Este email já está associado a outro método de início de sessão.',
-      );
-    }
-    if (byEmail) {
-      return fail(
-        'OAUTH_ACCOUNT_CONFLICT',
-        'Este email já está associado a outro método de início de sessão.',
-      );
-    }
-
-    const signupToken = await this.jwtService.signAsync(
-      {
-        typ: 'oauth_signup',
-        email: profile.email,
-        provider: profile.provider,
-        oauthSubject: profile.oauthSubject,
-        firstName: profile.firstName,
-        lastName: profile.lastName,
-        picture: profile.picture,
-      },
-      { expiresIn: '15m' },
-    );
-
-    return bridgeId
-      ? this.oauthSignupRedirectSocket(
-          signupToken,
-          frontendRedirectOverride,
-          bridgeId,
-        )
-      : this.oauthSignUrl(
-          {
-            oauth: 'signup',
-            signup_token: signupToken,
-          },
-          frontendRedirectOverride,
-        );
-  }
-
-  async completeOAuthSignup(
-    dto: OAuthCompleteDto,
-    req?: Request,
-  ): Promise<TokensResponseDto> {
-    let payload: {
-      typ?: string;
-      email: string;
-      provider: 'google' | 'microsoft';
-      oauthSubject: string;
-      firstName: string;
-      lastName: string;
-      picture: string | null;
-    };
-    try {
-      payload = await this.jwtService.verifyAsync(dto.signupToken);
-    } catch {
-      throw new BadRequestException('Token de registo inválido ou expirado');
-    }
-
-    if (payload.typ !== 'oauth_signup') {
-      throw new BadRequestException('Token inválido');
-    }
-
-    const email = payload.email.toLowerCase().trim();
-    const dupe = await this.usersService.findActiveByEmail(email);
-    if (dupe) {
-      throw new ConflictException('Conta já criada. Inicie sessão.');
-    }
-
-    const dupeOAuth = await this.usersService.findByProviderAndSubject(
-      payload.provider,
-      payload.oauthSubject,
-    );
-    if (dupeOAuth) {
-      throw new ConflictException('Conta já criada. Inicie sessão.');
-    }
-
-    const user = this.usersService.createPartial({
-      firstName: payload.firstName.trim(),
-      lastName: payload.lastName.trim(),
-      email,
-      passwordHash: null,
-      authProvider: payload.provider,
-      oauthSubject: payload.oauthSubject,
-      encryptionPublicKey: dto.encryptionPublicKey?.trim() ?? null,
-      emailVerifiedAt: new Date(),
-      emailVerificationToken: null,
-      avatarUrl: null,
-    });
-
-    const saved = await this.usersService.save(user);
-
-    const avatarUrl = await this.maybeSaveAvatarFromUrl(saved.id, payload.picture);
-    if (avatarUrl) {
-      saved.avatarUrl = avatarUrl;
-      await this.usersService.save(saved);
-    }
-
-    return this.issueTokens(saved, {
-      req,
-      loginMethod: 'oauth_register',
-      clientPublicIp: dto.clientPublicIp,
-    });
-  }
-
   async requestPasswordChangeOtp(userId: string): Promise<{ message: string }> {
     const user = await this.usersService.findActiveById(userId);
     if (!user) {
@@ -1367,7 +987,7 @@ export class AuthService {
     }
     if (!user.passwordHash) {
       throw new BadRequestException(
-        'Esta conta não tem senha local. Utilize recuperação de senha ou OAuth.',
+        'Esta conta não tem senha local. Utilize recuperação de senha.',
       );
     }
     const email = user.email.toLowerCase().trim();

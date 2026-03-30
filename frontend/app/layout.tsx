@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { OAuthDeepLinkBridge } from "@/components/oauth-deep-link-bridge";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +29,6 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body suppressHydrationWarning>
-        <OAuthDeepLinkBridge />
         {children}
       </body>
     </html>

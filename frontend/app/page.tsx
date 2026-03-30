@@ -49,7 +49,6 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { FaGoogle, FaMicrosoft } from "react-icons/fa";
 import { type Area } from "react-easy-crop";
 import * as Tooltip from "@radix-ui/react-tooltip";
 import { emptyOtp6, Otp6Input } from "@/components/otp-6-input";
@@ -189,7 +188,6 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   meRequest,
-  oauthReactivateRequest,
   updatePresenceRequest,
   registerRequest,
   resetPasswordRequest,
@@ -215,7 +213,6 @@ import {
 import { buildForwardSendBody } from "@/lib/forward-chat-message";
 import { bustAvatarCache } from "@/lib/avatar-url";
 import { getAccessToken } from "@/lib/auth-tokens";
-import { oauthNavigateOrOpen } from "@/lib/oauth-open";
 import {
   fetchPublicIp,
   getCachedClientGeo,
@@ -286,7 +283,7 @@ function buildActiveCallSession(
   return { ...p, roomId, roomLayout, roomParticipants, callSessionType };
 }
 
-const LOGIN_WINDOW = { width: 380, height: 640 };
+const LOGIN_WINDOW = { width: 380, height: 560 };
 const REGISTER_WINDOW = { width: 430, height: 720 };
 const APP_MIN_WINDOW = { width: 980, height: 640 };
 const SPLASH_DURATION_MS = 4000;
@@ -478,9 +475,7 @@ export default function Home() {
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [isReactivateLoading, setIsReactivateLoading] = useState(false);
   const [reactivatePrompt, setReactivatePrompt] = useState<
-    | null
-    | { mode: "password"; email: string; password: string }
-    | { mode: "oauth"; token: string }
+    null | { mode: "password"; email: string; password: string }
   >(null);
   const [login2faPending, setLogin2faPending] = useState<{
     tempToken: string;
@@ -495,7 +490,6 @@ export default function Home() {
     "Verifique o email para ativar a conta. Depois pode iniciar sessão.",
   );
   const [registerEmail, setRegisterEmail] = useState("");
-  const [registerEmailReadonly, setRegisterEmailReadonly] = useState(false);
   const [legalBundle, setLegalBundle] = useState<LegalBundle | null>(null);
   const [legalLoading, setLegalLoading] = useState(true);
   const [legalFetchFailed, setLegalFetchFailed] = useState(false);
@@ -995,59 +989,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const raw = sessionStorage.getItem("oauth_callback_error");
-    if (!raw) return;
-    sessionStorage.removeItem("oauth_callback_error");
-    if (getAccessToken()) return;
-    try {
-      const parsed = JSON.parse(raw) as { message?: string; code?: string };
-      setAuthError(
-        parsed.message?.trim() ||
-          parsed.code ||
-          "Erro ao iniciar sessão com Google ou Microsoft.",
-      );
-    } catch {
-      setAuthError("Erro OAuth.");
-    }
-  }, []);
-
-  useEffect(() => {
-    if (authView !== "login") return;
-    const raw = sessionStorage.getItem("oauth_reactivate_pending");
-    if (!raw) return;
-    sessionStorage.removeItem("oauth_reactivate_pending");
-    if (getAccessToken()) return;
-    try {
-      const parsed = JSON.parse(raw) as { reactivationToken?: string };
-      if (typeof parsed.reactivationToken === "string" && parsed.reactivationToken.length > 0) {
-        setReactivatePrompt({ mode: "oauth", token: parsed.reactivationToken });
-      }
-    } catch {
-      /* ignorar */
-    }
-  }, [authView]);
-
-  useEffect(() => {
-    if (authView !== "login") return;
-    const raw = sessionStorage.getItem("oauth_2fa_pending");
-    if (!raw) return;
-    sessionStorage.removeItem("oauth_2fa_pending");
-    if (getAccessToken()) return;
-    try {
-      const parsed = JSON.parse(raw) as { tempToken?: string };
-      if (typeof parsed.tempToken === "string" && parsed.tempToken.length > 0) {
-        void (async () => {
-          const geo = await getClientGeo();
-          setLogin2faDigits(emptyOtp6());
-          setLogin2faPending({ tempToken: parsed.tempToken!, geo });
-        })();
-      }
-    } catch {
-      /* ignorar */
-    }
-  }, [authView]);
-
-  useEffect(() => {
     if (resendSeconds <= 0) return;
     const timer = window.setInterval(() => {
       setResendSeconds((current) => (current > 0 ? current - 1 : 0));
@@ -1310,25 +1251,15 @@ export default function Home() {
     void syncTauriWindowChrome(isDark);
   }, [authView, isDark]);
 
-  const goToRegister = async () => {
+  const goToRegister = async (prefillEmail?: string) => {
     setAuthError(null);
-    setRegisterEmail("");
-    setRegisterEmailReadonly(false);
-    setAuthView("register");
-    await resizeWindow(REGISTER_WINDOW.width, REGISTER_WINDOW.height);
-  };
-
-  const goToRegisterOauthOnly = async (email: string) => {
-    setAuthError(null);
-    setRegisterEmail(email.trim());
-    setRegisterEmailReadonly(true);
+    setRegisterEmail(prefillEmail?.trim() ?? "");
     setAuthView("register");
     await resizeWindow(REGISTER_WINDOW.width, REGISTER_WINDOW.height);
   };
 
   const resetRegisterForm = () => {
     setRegisterEmail("");
-    setRegisterEmailReadonly(false);
     setRegisterPassword("");
     setShowRegisterPassword(false);
     setShowConfirmPassword(false);
@@ -1516,21 +1447,13 @@ export default function Home() {
     const geoFirst = await getClientGeo();
     setIsReactivateLoading(true);
     try {
-      let tokens: LoginResponse;
-      if (reactivatePrompt.mode === "password") {
-        const geo = geoFirst;
-        const pubIp = getCachedPublicIp() ?? (await fetchPublicIp());
-        tokens = await loginRequest(reactivatePrompt.email, reactivatePrompt.password, {
-          reactivate: true,
-          ...(geo ? { latitude: geo.latitude, longitude: geo.longitude } : {}),
-          ...(pubIp ? { clientPublicIp: pubIp } : {}),
-        });
-      } else {
-        const pubIp = getCachedPublicIp() ?? (await fetchPublicIp());
-        tokens = await oauthReactivateRequest(reactivatePrompt.token, {
-          ...(pubIp ? { clientPublicIp: pubIp } : {}),
-        });
-      }
+      const geo = geoFirst;
+      const pubIp = getCachedPublicIp() ?? (await fetchPublicIp());
+      const tokens = await loginRequest(reactivatePrompt.email, reactivatePrompt.password, {
+        reactivate: true,
+        ...(geo ? { latitude: geo.latitude, longitude: geo.longitude } : {}),
+        ...(pubIp ? { clientPublicIp: pubIp } : {}),
+      });
       await applyLoginTokens(tokens);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "Falha ao reativar a conta.");
@@ -1582,12 +1505,12 @@ export default function Home() {
     } catch (err) {
       if (err instanceof ApiError && err.code === "USER_NOT_FOUND") {
         const em = err.email ?? email;
-        await goToRegisterOauthOnly(em);
+        await goToRegister(em);
         return;
       }
-      if (err instanceof ApiError && err.code === "OAUTH_ONLY") {
+      if (err instanceof ApiError && err.code === "NO_PASSWORD") {
         setAuthError(
-          "Esta conta usa Google ou Microsoft. Utilize um dos botões abaixo para entrar.",
+          "Esta conta não tem senha. Utilize recuperar senha no ecrã de login para definir uma.",
         );
         return;
       }
@@ -1616,10 +1539,6 @@ export default function Home() {
   const handleRegisterSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError(null);
-    if (registerEmailReadonly) {
-      setAuthError("Complete o registo com Google ou Microsoft.");
-      return;
-    }
     const form = event.currentTarget;
     const fd0 = new FormData(form);
     const firstName = String(fd0.get("firstName") ?? "").trim();
@@ -6482,9 +6401,9 @@ export default function Home() {
           <form
             onSubmit={handleSubmit}
             onPointerDownCapture={requestLoginGeoOnUserInteraction}
-            className={`relative z-10 flex flex-1 flex-col ${isDesktopAuthShell ? "" : "min-h-[520px]"}`}
+            className={`relative z-10 flex flex-1 flex-col ${isDesktopAuthShell ? "" : "min-h-[460px]"}`}
           >
-            <div className="mb-6 flex justify-center">
+            <div className="mb-4 flex justify-center">
               {/* eslint-disable-next-line @next/next/no-img-element -- logo em public */}
               <img
                 src={isDark ? "/logo-ligth.svg" : "/logo-dark.svg"}
@@ -6540,11 +6459,11 @@ export default function Home() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              <div className="flex justify-end">
+              <div className="mt-2 flex justify-end">
                 <button
                   type="button"
                   onClick={goToForgotPassword}
-                  className={`cursor-pointer text-xs font-medium underline transition ${
+                  className={`cursor-pointer px-1 py-0.5 text-xs font-medium underline transition ${
                     isDark ? "text-zinc-300 hover:text-zinc-100" : "text-emerald-700 hover:text-emerald-900"
                   }`}
                 >
@@ -6553,7 +6472,7 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-5 space-y-3">
+            <div className="mt-4 space-y-3">
               <button
                 type="submit"
                 disabled={isLoginLoading}
@@ -6564,7 +6483,7 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={goToRegister}
+                onClick={() => void goToRegister()}
                 disabled={isLoginLoading}
                 className={`w-full cursor-pointer rounded-md border px-3 py-2.5 text-sm font-semibold transition ${
                   isDark
@@ -6576,44 +6495,6 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="my-4 flex min-w-0 items-center gap-3">
-              <div className={`h-px min-w-0 flex-1 ${isDark ? "bg-zinc-700" : "bg-emerald-300"}`} />
-              <span className={`shrink-0 text-xs ${isDark ? "text-zinc-400" : "text-emerald-700/80"}`}>
-                OU
-              </span>
-              <div className={`h-px min-w-0 flex-1 ${isDark ? "bg-zinc-700" : "bg-emerald-300"}`} />
-            </div>
-
-            <div className="mt-2 flex items-center justify-center gap-4 pb-4">
-              <button
-                type="button"
-                aria-label="Entrar com Google"
-                onClick={() => {
-                  void oauthNavigateOrOpen({ provider: "google" });
-                }}
-                className={`flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border transition ${
-                  isDark
-                    ? "border-zinc-600 bg-zinc-800 hover:bg-zinc-700"
-                    : "border-emerald-300 bg-white hover:bg-emerald-100"
-                }`}
-              >
-                <FaGoogle size={18} />
-              </button>
-              <button
-                type="button"
-                aria-label="Entrar com Microsoft"
-                onClick={() => {
-                  void oauthNavigateOrOpen({ provider: "microsoft" });
-                }}
-                className={`flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border transition ${
-                  isDark
-                    ? "border-zinc-600 bg-zinc-800 hover:bg-zinc-700"
-                    : "border-emerald-300 bg-white hover:bg-emerald-100"
-                }`}
-              >
-                <FaMicrosoft size={18} />
-              </button>
-            </div>
           </form>
           {reactivatePrompt ? (
             <div
@@ -6953,7 +6834,7 @@ export default function Home() {
                       ? "border-zinc-700 bg-zinc-800 placeholder:text-zinc-500 focus:ring-emerald-500"
                       : "border-emerald-300 bg-white placeholder:text-emerald-400 focus:ring-emerald-400"
                   }`}
-                  required={!registerEmailReadonly}
+                  required
                 />
               </div>
               <div className="space-y-1.5">
@@ -6970,7 +6851,7 @@ export default function Home() {
                       ? "border-zinc-700 bg-zinc-800 placeholder:text-zinc-500 focus:ring-emerald-500"
                       : "border-emerald-300 bg-white placeholder:text-emerald-400 focus:ring-emerald-400"
                   }`}
-                  required={!registerEmailReadonly}
+                  required
                 />
               </div>
             </div>
@@ -6986,28 +6867,17 @@ export default function Home() {
                 placeholder="voce@exemplo.com"
                 value={registerEmail}
                 onChange={(event) => {
-                  if (!registerEmailReadonly) {
-                    setRegisterEmail(event.target.value);
-                  }
+                  setRegisterEmail(event.target.value);
                 }}
-                readOnly={registerEmailReadonly}
                 className={`w-full rounded-md border px-3 py-2.5 text-sm outline-none transition focus:ring-2 ${
                   isDark
                     ? "border-zinc-700 bg-zinc-800 placeholder:text-zinc-500 focus:ring-emerald-500"
                     : "border-emerald-300 bg-white placeholder:text-emerald-400 focus:ring-emerald-400"
-                } ${registerEmailReadonly ? "cursor-not-allowed opacity-90" : ""}`}
+                }`}
                 required
               />
-              {registerEmailReadonly ? (
-                <p className={`text-xs ${isDark ? "text-zinc-400" : "text-emerald-800/90"}`}>
-                  Utilize Google ou Microsoft para criar a conta. O email deve ser o mesmo na
-                  conta do provedor.
-                </p>
-              ) : null}
             </div>
 
-            {!registerEmailReadonly ? (
-              <>
             <div className="mt-3 space-y-1.5">
               <label htmlFor="register-password" className="text-sm font-medium">
                 Senha
@@ -7075,8 +6945,6 @@ export default function Home() {
                 </button>
               </div>
             </div>
-              </>
-            ) : null}
 
             <label className="mt-4 flex cursor-pointer items-start gap-2 text-xs">
               <input type="checkbox" required className="mt-0.5 h-4 w-4 cursor-pointer accent-emerald-600" />
@@ -7101,69 +6969,7 @@ export default function Home() {
               </span>
             </label>
 
-            {registerEmailReadonly ? (
-              <>
-                <div className="my-4 flex min-w-0 items-center gap-3">
-                  <div className={`h-px min-w-0 flex-1 ${isDark ? "bg-zinc-700" : "bg-emerald-300"}`} />
-                  <span className={`shrink-0 text-xs ${isDark ? "text-zinc-400" : "text-emerald-700/80"}`}>
-                    OU
-                  </span>
-                  <div className={`h-px min-w-0 flex-1 ${isDark ? "bg-zinc-700" : "bg-emerald-300"}`} />
-                </div>
-                <div className="flex items-center justify-center gap-4 pb-2">
-                  <button
-                    type="button"
-                    aria-label="Continuar com Google"
-                    onClick={() => {
-                      const form = document.getElementById("register-form");
-                      if (!(form instanceof HTMLFormElement)) return;
-                      if (!form.checkValidity()) {
-                        form.reportValidity();
-                        return;
-                      }
-                      void oauthNavigateOrOpen({
-                        provider: "google",
-                        email: registerEmail,
-                      });
-                    }}
-                    className={`flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border transition ${
-                      isDark
-                        ? "border-zinc-600 bg-zinc-800 hover:bg-zinc-700"
-                        : "border-emerald-300 bg-white hover:bg-emerald-100"
-                    }`}
-                  >
-                    <FaGoogle size={18} />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="Continuar com Microsoft"
-                    onClick={() => {
-                      const form = document.getElementById("register-form");
-                      if (!(form instanceof HTMLFormElement)) return;
-                      if (!form.checkValidity()) {
-                        form.reportValidity();
-                        return;
-                      }
-                      void oauthNavigateOrOpen({
-                        provider: "microsoft",
-                        email: registerEmail,
-                      });
-                    }}
-                    className={`flex h-12 w-12 cursor-pointer items-center justify-center rounded-full border transition ${
-                      isDark
-                        ? "border-zinc-600 bg-zinc-800 hover:bg-zinc-700"
-                        : "border-emerald-300 bg-white hover:bg-emerald-100"
-                    }`}
-                  >
-                    <FaMicrosoft size={18} />
-                  </button>
-                </div>
-              </>
-            ) : null}
-
-            <div
-              className={`mt-6 grid gap-3 pb-3 ${registerEmailReadonly ? "grid-cols-1" : "grid-cols-2"}`}
-            >
+            <div className="mt-6 grid grid-cols-2 gap-3 pb-3">
               <button
                 type="button"
                 onClick={goToLogin}
@@ -7176,15 +6982,13 @@ export default function Home() {
               >
                 Cancelar cadastro
               </button>
-              {!registerEmailReadonly ? (
-                <button
-                  type="submit"
-                  disabled={isRegisterLoading}
-                  className="w-full cursor-pointer rounded-md bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
-                >
-                  Criar conta
-                </button>
-              ) : null}
+              <button
+                type="submit"
+                disabled={isRegisterLoading}
+                className="w-full cursor-pointer rounded-md bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-500"
+              >
+                Criar conta
+              </button>
             </div>
           </form>
         )}

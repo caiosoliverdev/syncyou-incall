@@ -86,7 +86,7 @@ export function SecuritySettingsPanel({
 
   const handleRequestPwOtp = async () => {
     if (!user.hasPassword) {
-      setPwError("Conta sem senha local. Use recuperação de senha ou OAuth.");
+      setPwError("Conta sem senha local. Use recuperação de senha no início de sessão.");
       return;
     }
     setPwError(null);
@@ -335,8 +335,7 @@ export function SecuritySettingsPanel({
           {pwError && <p className="text-sm text-red-500">{pwError}</p>}
           {!user.hasPassword && (
             <p className={`text-sm ${isDark ? "text-zinc-500" : "text-emerald-800/70"}`}>
-              Esta conta não tem senha local. Defina uma senha através de &quot;Esqueci a senha&quot; no início de sessão
-              ou continue com Google/Microsoft.
+              Esta conta não tem senha local. Defina uma senha através de &quot;Esqueci a senha&quot; no início de sessão.
             </p>
           )}
         </div>

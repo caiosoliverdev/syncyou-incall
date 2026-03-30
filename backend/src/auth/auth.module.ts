@@ -11,19 +11,11 @@ import { ContactsModule } from '../contacts/contacts.module';
 import { UsersModule } from '../users/users.module';
 import type { JwtConfigSlice } from './jwt-config.types';
 import { ensureJwtRsaKeys } from './jwt-keys.util';
-import { GoogleOAuthStrategy } from './google-oauth.strategy';
-import { MicrosoftOAuthStrategy } from './microsoft-oauth.strategy';
-import { GoogleOAuthAuthGuard } from './guards/google-oauth-auth.guard';
-import { MicrosoftOAuthAuthGuard } from './guards/microsoft-oauth-auth.guard';
-import { OAuthGoogleEnabledGuard } from './guards/oauth-google-enabled.guard';
-import { OAuthMicrosoftEnabledGuard } from './guards/oauth-microsoft-enabled.guard';
 import { JwtStrategy } from './jwt.strategy';
-import { OAuthBridgeModule } from './oauth-bridge/oauth-bridge.module';
 import { SessionRegistryService } from './session/session-registry.service';
 import { SessionGateway } from './session/session.gateway';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { OauthGoogleEnvDiagnosticsService } from './oauth-google-env-diagnostics.service';
 import { PasswordResetOtp } from './entities/password-reset-otp.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
 import { SessionLoginLog } from './entities/session-login-log.entity';
@@ -37,7 +29,6 @@ import { SessionLoginLog } from './entities/session-login-log.entity';
     forwardRef(() => ContactsModule),
     forwardRef(() => ChatModule),
     forwardRef(() => MediasoupModule),
-    OAuthBridgeModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],
@@ -65,17 +56,10 @@ import { SessionLoginLog } from './entities/session-login-log.entity';
   ],
   controllers: [AuthController],
   providers: [
-    OauthGoogleEnvDiagnosticsService,
     SessionRegistryService,
     SessionGateway,
     AuthService,
     JwtStrategy,
-    GoogleOAuthStrategy,
-    MicrosoftOAuthStrategy,
-    GoogleOAuthAuthGuard,
-    MicrosoftOAuthAuthGuard,
-    OAuthGoogleEnabledGuard,
-    OAuthMicrosoftEnabledGuard,
   ],
   exports: [JwtModule, PassportModule, AuthService, SessionRegistryService],
 })

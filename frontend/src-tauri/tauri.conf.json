@@ -12,7 +12,7 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["syncyou"]
+        "schemes": ["syncyou", "syncyou-dev"]
       }
     },
     "updater": {
@@ -32,7 +32,7 @@
         "label": "main",
         "title": "SyncYou",
         "width": 380,
-        "height": 640,
+        "height": 560,
         "resizable": false,
         "fullscreen": false,
         "decorations": false

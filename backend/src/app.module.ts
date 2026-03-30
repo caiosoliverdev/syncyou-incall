@@ -19,7 +19,6 @@ import databaseConfig from './config/database.config';
 import jwtConfig from './config/jwt.config';
 import mailConfig from './config/mail.config';
 import securityConfig from './config/security.config';
-import oauthConfig from './config/oauth.config';
 import mediasoupConfig from './config/mediasoup.config';
 import desktopUpdatesConfig from './config/desktop-updates.config';
 import { DesktopUpdatesModule } from './desktop-updates/desktop-updates.module';
@@ -36,7 +35,6 @@ import { DesktopUpdatesModule } from './desktop-updates/desktop-updates.module';
         urlsConfig,
         authConfig,
         securityConfig,
-        oauthConfig,
         mediasoupConfig,
         desktopUpdatesConfig,
       ],

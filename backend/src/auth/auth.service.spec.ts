@@ -6,7 +6,10 @@ import { MailerService } from '@nestjs-modules/mailer';
 import { AuthService } from './auth.service';
 import { PasswordResetOtp } from './entities/password-reset-otp.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { SessionLoginLog } from './entities/session-login-log.entity';
 import { UsersService } from '../users/users.service';
+import { SessionRegistryService } from './session/session-registry.service';
+import { ContactsService } from '../contacts/contacts.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -26,6 +29,8 @@ describe('AuthService', () => {
             save: jest.fn(),
           },
         },
+        { provide: ContactsService, useValue: {} },
+        { provide: SessionRegistryService, useValue: {} },
         { provide: JwtService, useValue: { signAsync: jest.fn(), verifyAsync: jest.fn() } },
         {
           provide: ConfigService,
@@ -49,25 +54,6 @@ describe('AuthService', () => {
                   deepLinkPathAfterEmailConfirm: 'auth/email-verified',
                 };
               }
-              if (key === 'oauth') {
-                return {
-                  webAppOrigin: 'http://localhost:3000',
-                  frontendRedirectUrl: 'http://localhost:3000/oauth/callback',
-                  frontendRedirectAllowlist: ['http://localhost:3000/oauth/callback'],
-                  google: {
-                    enabled: false,
-                    clientId: '',
-                    clientSecret: '',
-                    callbackUrl: 'http://localhost:3001/api/v1/auth/google/callback',
-                  },
-                  microsoft: {
-                    enabled: false,
-                    clientId: '',
-                    clientSecret: '',
-                    callbackUrl: 'http://localhost:3001/api/v1/auth/microsoft/callback',
-                  },
-                };
-              }
               if (key === 'security') {
                 return { otpPepper: 'test-pepper' };
               }
@@ -83,6 +69,10 @@ describe('AuthService', () => {
         {
           provide: getRepositoryToken(PasswordResetOtp),
           useValue: { create: jest.fn(), save: jest.fn(), findOne: jest.fn(), update: jest.fn() },
+        },
+        {
+          provide: getRepositoryToken(SessionLoginLog),
+          useValue: { create: jest.fn(), save: jest.fn() },
         },
       ],
     }).compile();

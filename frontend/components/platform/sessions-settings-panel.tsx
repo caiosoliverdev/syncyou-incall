@@ -14,10 +14,10 @@ function formatLoginMethod(method: string): string {
   const m: Record<string, string> = {
     password: "Palavra-passe",
     totp_2fa: "2FA (TOTP)",
-    oauth_google: "Google",
-    oauth_microsoft: "Microsoft",
-    oauth_reactivate: "OAuth (reativação)",
-    oauth_register: "OAuth (registo)",
+    oauth_google: "Conta externa (legado)",
+    oauth_microsoft: "Conta externa (legado)",
+    oauth_reactivate: "Reativação (legado)",
+    oauth_register: "Registo (legado)",
   };
   return m[method] ?? method;
 }

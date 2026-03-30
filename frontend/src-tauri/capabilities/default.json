@@ -4,8 +4,7 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "call-*",
-    "oauth-login"
+    "call-*"
   ],
   "permissions": [
     "core:default",

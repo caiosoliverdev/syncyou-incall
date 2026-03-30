@@ -21,78 +21,15 @@ async function bootstrap() {
 
   const publicUrls = resolvePublicUrls();
 
-  /**
-   * Se OAUTH_FRONTEND_REDIRECT_URL (ou fallback) estiver errado, o redirect de sucesso pode cair em
-   * `/api/v1/auth/google/callback?oauth=ok&access_token=...` — o Passport espera `code` do Google nesse path.
-   * Reencaminha para a página da UI que consome tokens (`/oauth/callback`) com a mesma query.
-   */
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      next();
-      return;
-    }
-    const p = (req.path || '').replace(/\/+$/, '');
-    if (!/\/auth\/(google|microsoft)\/callback$/.test(p)) {
-      next();
-      return;
-    }
-    const q = req.query as Record<string, unknown>;
-    if (typeof q.code === 'string' && q.code.length > 0) {
-      next();
-      return;
-    }
-    const oauth = typeof q.oauth === 'string' ? q.oauth : '';
-    if (!oauth) {
-      next();
-      return;
-    }
-    const full = (req.originalUrl || req.url || '').split('#')[0];
-    const qIdx = full.indexOf('?');
-    const search = qIdx >= 0 ? full.slice(qIdx) : '';
-    const base = publicUrls.webAppOrigin.replace(/\/$/, '');
-    res.redirect(302, `${base}/oauth/callback${search}`);
-  });
-
-  /** Next `output: "export"` (ex. /oauth/callback) quando API e UI partilham o mesmo host sem nginx a servir `out/`. */
+  /** Next `output: "export"` quando API e UI partilham o mesmo host sem nginx a servir `out/`. */
   const frontendStaticRoot = resolveFrontendStaticRoot();
-  const oauthCallbackHtml = join(frontendStaticRoot, 'oauth', 'callback.html');
-  const oauthTauriHandoffHtml = join(frontendStaticRoot, 'oauth', 'tauri-handoff.html');
-
-  if (!existsSync(oauthCallbackHtml)) {
+  const indexHtml = join(frontendStaticRoot, 'index.html');
+  if (!existsSync(indexHtml)) {
     console.warn(
-      `[bootstrap] Next export em falta: ${oauthCallbackHtml} (cwd=${process.cwd()}, ` +
+      `[bootstrap] Next export em falta ou caminho errado: ${indexHtml} (cwd=${process.cwd()}, ` +
         `FRONTEND_STATIC_DIR=${process.env.FRONTEND_STATIC_DIR ?? '(não definido)'}). ` +
         `Faz build em frontend e copia out/, ou define FRONTEND_STATIC_DIR=/caminho/absoluto/para/out`,
     );
-  }
-
-  const httpApp = app.getHttpAdapter().getInstance() as import('express').Application;
-
-  const sendNextOAuthHtml =
-    (absolutePath: string) => (_req: Request, res: Response) => {
-      if (!existsSync(absolutePath)) {
-        res.status(404).json({
-          message:
-            'Export estático do Next em falta (oauth). Faz `cd frontend && npm run build`, copia a pasta `out/` para o servidor e define FRONTEND_STATIC_DIR com o caminho absoluto até `out/` (ex.: /var/www/syncyou/out).',
-          cwd: process.cwd(),
-          expectedFile: absolutePath,
-          frontendStaticRoot,
-        });
-        return;
-      }
-      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-      res.sendFile(absolutePath, (err) => {
-        if (err && !res.headersSent) {
-          res.status(500).end();
-        }
-      });
-    };
-
-  for (const path of ['/oauth/callback', '/oauth/callback/']) {
-    httpApp.get(path, sendNextOAuthHtml(oauthCallbackHtml));
-  }
-  for (const path of ['/oauth/tauri-handoff', '/oauth/tauri-handoff/']) {
-    httpApp.get(path, sendNextOAuthHtml(oauthTauriHandoffHtml));
   }
 
   if (existsSync(frontendStaticRoot)) {
@@ -115,7 +52,7 @@ async function bootstrap() {
   } else if (process.env.NODE_ENV === 'production') {
     console.warn(
       `[bootstrap] FRONTEND_STATIC_DIR / export Next não encontrado (${frontendStaticRoot}). ` +
-        `GET /oauth/callback e ficheiros estáticos da UI devolvem 404 — faz build do frontend ou define FRONTEND_STATIC_DIR.`,
+        `Ficheiros estáticos da UI devolvem 404 — faz build do frontend ou define FRONTEND_STATIC_DIR.`,
     );
   }
 

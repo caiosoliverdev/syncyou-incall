@@ -17,11 +17,10 @@ export function resolveFrontendStaticRoot(): string {
     join(cwd, '..', '..', 'frontend', 'out'),
     join(cwd, 'out'),
   ];
-  const hasCallback = (root: string) =>
-    existsSync(join(root, 'oauth', 'callback.html'));
+  const hasIndex = (root: string) => existsSync(join(root, 'index.html'));
 
   for (const c of candidates) {
-    if (hasCallback(c)) return c;
+    if (hasIndex(c)) return c;
   }
   return candidates[0];
 }

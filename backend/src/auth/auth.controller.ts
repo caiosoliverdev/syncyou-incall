@@ -24,7 +24,6 @@ import {
 } from '@nestjs/swagger';
 import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
-import { consumeOAuthRedirectState } from './oauth-redirect-state.store';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService } from './auth.service';
@@ -45,20 +44,12 @@ import { RegisterResponseDto } from './dto/register-response.dto';
 import { TokensResponseDto } from './dto/tokens-response.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SessionsResponseDto } from './dto/sessions-response.dto';
-import { OAuthCompleteDto } from './dto/oauth-complete.dto';
-import { OAuthReactivateDto } from './dto/oauth-reactivate.dto';
 import { Login2faDto } from './dto/login-2fa.dto';
 import { PasswordChangeVerifyDto } from './dto/password-change-verify.dto';
 import { PasswordChangeCompleteDto } from './dto/password-change-complete.dto';
 import { TwoFactorVerifyEmailDto } from './dto/two-factor-verify-email.dto';
 import { TwoFactorConfirmTotpDto } from './dto/two-factor-confirm-totp.dto';
 import { TwoFactorDisableDto } from './dto/two-factor-disable.dto';
-import { GoogleOAuthAuthGuard } from './guards/google-oauth-auth.guard';
-import { MicrosoftOAuthAuthGuard } from './guards/microsoft-oauth-auth.guard';
-import { OAuthGoogleEnabledGuard } from './guards/oauth-google-enabled.guard';
-import { OAuthMicrosoftEnabledGuard } from './guards/oauth-microsoft-enabled.guard';
-import type { OAuthProfilePayload } from './types/oauth-profile.types';
-
 @ApiTags('auth')
 @Controller('auth')
 @Throttle({ default: { limit: 30, ttl: 60000 } })
@@ -110,7 +101,7 @@ export class AuthController {
   @ApiResponse({
     status: 401,
     description:
-      'Credenciais inválidas; ou code USER_NOT_FOUND / OAUTH_ONLY no corpo JSON',
+      'Credenciais inválidas; ou code USER_NOT_FOUND / NO_PASSWORD no corpo JSON',
   })
   @ApiResponse({ status: 403, description: 'Conta não ativada / TWO_FACTOR_REQUIRED' })
   async login(
@@ -136,110 +127,6 @@ export class AuthController {
     @Body() dto: PasswordChangeCompleteDto,
   ): Promise<{ message: string }> {
     return this.authService.completePasswordChangeViaOtp(dto);
-  }
-
-  @Post('oauth/reactivate')
-  @ApiOperation({
-    summary:
-      'Reativar conta desativada após OAuth (JWT devolvido em oauth=reactivate no callback)',
-  })
-  @ApiResponse({ status: 200, type: TokensResponseDto })
-  @ApiResponse({ status: 400, description: 'Token inválido' })
-  async oauthReactivate(
-    @Body() dto: OAuthReactivateDto,
-    @Req() req: Request,
-  ): Promise<TokensResponseDto> {
-    return this.authService.oauthReactivateWithToken(
-      dto.reactivationToken,
-      req,
-      dto.clientPublicIp,
-    );
-  }
-
-  @Get('google')
-  @UseGuards(OAuthGoogleEnabledGuard, GoogleOAuthAuthGuard)
-  @ApiOperation({
-    summary: 'Iniciar OAuth Google (redirect)',
-    description:
-      'Opcional: redirect_uri (allowlist) para browser externo + deep link (ex. syncyou://oauth/callback).',
-  })
-  @ApiResponse({ status: 302, description: 'Redirect para Google' })
-  googleAuth(): void {
-    /* Passport redireciona */
-  }
-
-  @Get('google/callback')
-  @UseGuards(OAuthGoogleEnabledGuard, GoogleOAuthAuthGuard)
-  @ApiOperation({ summary: 'Callback Google OAuth' })
-  @ApiResponse({ status: 302, description: 'Redirect para frontend (hash com tokens ou signup)' })
-  async googleCallback(
-    @Req() req: Request & { user: OAuthProfilePayload; query?: { state?: string } },
-    @Res() res: Response,
-  ): Promise<void> {
-    const consumed = consumeOAuthRedirectState(req.query?.state);
-    const fr = consumed?.redirectUri ?? req.cookies?.oauth_fr;
-    const bridgeId = consumed?.bridgeId;
-    if (typeof req.cookies?.oauth_fr === 'string') {
-      res.clearCookie('oauth_fr', { path: '/' });
-    }
-    const url = await this.authService.buildOAuthRedirectUrl(
-      req.user,
-      typeof fr === 'string' ? fr : undefined,
-      bridgeId,
-      req,
-      consumed?.clientPublicIp,
-    );
-    res.redirect(302, url);
-  }
-
-  @Get('microsoft')
-  @UseGuards(OAuthMicrosoftEnabledGuard, MicrosoftOAuthAuthGuard)
-  @ApiOperation({
-    summary: 'Iniciar OAuth Microsoft (redirect)',
-    description:
-      'Opcional: redirect_uri (allowlist) para browser externo + deep link (ex. syncyou://oauth/callback).',
-  })
-  @ApiResponse({ status: 302, description: 'Redirect para Microsoft' })
-  microsoftAuth(): void {
-    /* Passport redireciona */
-  }
-
-  @Get('microsoft/callback')
-  @UseGuards(OAuthMicrosoftEnabledGuard, MicrosoftOAuthAuthGuard)
-  @ApiOperation({ summary: 'Callback Microsoft OAuth' })
-  @ApiResponse({ status: 302, description: 'Redirect para frontend (hash com tokens ou signup)' })
-  async microsoftCallback(
-    @Req() req: Request & { user: OAuthProfilePayload; query?: { state?: string } },
-    @Res() res: Response,
-  ): Promise<void> {
-    const consumed = consumeOAuthRedirectState(req.query?.state);
-    const fr = consumed?.redirectUri ?? req.cookies?.oauth_fr;
-    const bridgeId = consumed?.bridgeId;
-    if (typeof req.cookies?.oauth_fr === 'string') {
-      res.clearCookie('oauth_fr', { path: '/' });
-    }
-    const url = await this.authService.buildOAuthRedirectUrl(
-      req.user,
-      typeof fr === 'string' ? fr : undefined,
-      bridgeId,
-      req,
-      consumed?.clientPublicIp,
-    );
-    res.redirect(302, url);
-  }
-
-  @Post('oauth/complete')
-  @ApiOperation({
-    summary: 'Concluir registo após OAuth (JWT com typ oauth_signup no callback)',
-  })
-  @ApiResponse({ status: 200, type: TokensResponseDto })
-  @ApiResponse({ status: 400, description: 'Token inválido' })
-  @ApiResponse({ status: 409, description: 'Conta já existente' })
-  async oauthComplete(
-    @Body() dto: OAuthCompleteDto,
-    @Req() req: Request,
-  ): Promise<TokensResponseDto> {
-    return this.authService.completeOAuthSignup(dto, req);
   }
 
   @Post('refresh')

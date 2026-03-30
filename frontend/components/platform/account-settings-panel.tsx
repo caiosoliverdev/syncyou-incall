@@ -583,7 +583,7 @@ export function AccountSettingsPanel({
             <p className={`mt-2 text-sm ${isDark ? "text-zinc-400" : "text-emerald-900/70"}`}>
               {hasPassword
                 ? "Introduza a sua senha para confirmar a desativação da conta."
-                : "Confirme para desativar a sua conta. Pode reativar mais tarde com email e o método OAuth utilizado."}
+                : "Confirme para desativar a sua conta. Pode reativar mais tarde com o mesmo email e senha."}
             </p>
             {hasPassword && (
               <div className="mt-4">
