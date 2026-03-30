@@ -1102,7 +1102,7 @@ export class AuthService {
   }
 
   async buildOAuthRedirectUrl(
-    profile: OAuthProfilePayload,
+    profile: OAuthProfilePayload | undefined,
     frontendRedirectOverride?: string,
     bridgeId?: string,
     req?: Request,
@@ -1122,6 +1122,17 @@ export class AuthService {
         frontendRedirectOverride,
       );
     };
+
+    if (
+      !profile ||
+      (profile.provider !== 'google' && profile.provider !== 'microsoft') ||
+      !profile.oauthSubject?.trim()
+    ) {
+      return fail(
+        'OAUTH_PROFILE_MISSING',
+        'Perfil OAuth em falta (Passport). Inicia novamente o início de sessão.',
+      );
+    }
 
     const existing = await this.usersService.findByProviderAndSubject(
       profile.provider,
