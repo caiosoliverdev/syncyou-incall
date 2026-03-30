@@ -14,6 +14,14 @@ import { fetchPublicIp, getCachedPublicIp } from "@/lib/client-geo";
 
 export type OAuthContinueProvider = "google" | "microsoft";
 
+/** Em Tauri o origin pode ser tauri:// ou asset: — OAuth precisa do host público (build: NEXT_PUBLIC_APP_ORIGIN). */
+function webAppOriginForOAuth(): string {
+  const env = process.env.NEXT_PUBLIC_APP_ORIGIN?.trim();
+  if (env) return env.replace(/\/+$/, "");
+  if (typeof window !== "undefined") return window.location.origin;
+  return "http://localhost:3000";
+}
+
 const OAUTH_WEBVIEW_LABEL = "oauth-login";
 
 let activeOAuthBridgeCleanup: (() => void) | undefined;
@@ -43,10 +51,7 @@ export async function oauthNavigateOrOpen(options: {
   provider: OAuthContinueProvider;
   email?: string;
 }): Promise<void> {
-  const origin =
-    typeof window !== "undefined"
-      ? window.location.origin
-      : (process.env.NEXT_PUBLIC_APP_ORIGIN ?? "http://localhost:3000");
+  const origin = webAppOriginForOAuth();
 
   const email = options.email?.trim();
   const { provider } = options;

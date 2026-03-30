@@ -58,6 +58,35 @@ async function bootstrap() {
     if (raw) return raw.startsWith('/') ? raw : join(process.cwd(), raw);
     return join(process.cwd(), '..', 'frontend', 'out');
   })();
+
+  const httpApp = app.getHttpAdapter().getInstance() as import('express').Application;
+  const oauthCallbackHtml = join(frontendStaticRoot, 'oauth', 'callback.html');
+  const oauthTauriHandoffHtml = join(frontendStaticRoot, 'oauth', 'tauri-handoff.html');
+
+  const sendNextOAuthHtml =
+    (absolutePath: string) => (_req: Request, res: Response) => {
+      if (!existsSync(absolutePath)) {
+        res.status(404).json({
+          message:
+            'Export estático do Next em falta (oauth). Faz `cd frontend && npm run build`, copia `out/` para o servidor ou define FRONTEND_STATIC_DIR com o caminho absoluto de `out/`.',
+        });
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.sendFile(absolutePath, (err) => {
+        if (err && !res.headersSent) {
+          res.status(500).end();
+        }
+      });
+    };
+
+  for (const path of ['/oauth/callback', '/oauth/callback/']) {
+    httpApp.get(path, sendNextOAuthHtml(oauthCallbackHtml));
+  }
+  for (const path of ['/oauth/tauri-handoff', '/oauth/tauri-handoff/']) {
+    httpApp.get(path, sendNextOAuthHtml(oauthTauriHandoffHtml));
+  }
+
   if (existsSync(frontendStaticRoot)) {
     const serveNextExport = express.static(frontendStaticRoot, {
       extensions: ['html'],
